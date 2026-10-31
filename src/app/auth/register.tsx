@@ -1,8 +1,10 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -71,11 +74,13 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [avatar, setAvatar] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const press = useRef(new Animated.Value(1)).current;
   const shake = useRef(new Animated.Value(0)).current;
+  const avatarScale = useRef(new Animated.Value(1)).current;
   const logoFloat = useFloat(reduce, 3200);
   const arrow = useFloat(reduce, 900);
 
@@ -90,6 +95,17 @@ export default function Register() {
     [press],
   );
 
+  const avatarPressTo = useCallback(
+    (v: number) =>
+      Animated.spring(avatarScale, {
+        toValue: v,
+        useNativeDriver: true,
+        friction: 6,
+        tension: 220,
+      }).start(),
+    [avatarScale],
+  );
+
   const shakeForm = useCallback(() => {
     if (reduce) return;
     const step = (to: number) =>
@@ -101,6 +117,65 @@ export default function Register() {
       });
     Animated.sequence([step(-8), step(8), step(-6), step(6), step(0)]).start();
   }, [shake, reduce]);
+
+  const pickFromGallery = useCallback(async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        "Permission needed",
+        "Photo gallery access allow karo taaki profile photo choose kar sako.",
+      );
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!res.canceled && res.assets?.length) {
+      setAvatar(res.assets[0].uri);
+    }
+  }, []);
+
+  const pickFromCamera = useCallback(async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        "Permission needed",
+        "Camera access allow karo taaki photo click kar sako.",
+      );
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!res.canceled && res.assets?.length) {
+      setAvatar(res.assets[0].uri);
+    }
+  }, []);
+
+  const onAvatarPress = useCallback(() => {
+    const options: {
+      text: string;
+      onPress?: () => void;
+      style?: "cancel" | "destructive" | "default";
+    }[] = [
+      { text: "Choose from gallery", onPress: pickFromGallery },
+      { text: "Take a photo", onPress: pickFromCamera },
+    ];
+    if (avatar) {
+      options.push({
+        text: "Remove photo",
+        style: "destructive",
+        onPress: () => setAvatar(null),
+      });
+    }
+    options.push({ text: "Cancel", style: "cancel" });
+    Alert.alert("Profile photo", "Apni profile photo select karo", options);
+  }, [avatar, pickFromGallery, pickFromCamera]);
 
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
@@ -126,7 +201,27 @@ export default function Register() {
     if (loading) return;
     try {
       setLoading(true);
-      console.log("Register attempt", { fullName, email, username });
+
+      const form = new FormData();
+      form.append("fullName", fullName.trim());
+      form.append("email", email.trim());
+      form.append("username", username.trim());
+      form.append("password", password);
+      if (avatar) {
+        const ext = avatar.split(".").pop()?.toLowerCase() || "jpg";
+        form.append("avatar", {
+          uri: avatar,
+          name: `avatar.${ext}`,
+          type: `image/${ext === "jpg" ? "jpeg" : ext}`,
+        } as any);
+      }
+
+      console.log("Register attempt", {
+        fullName,
+        email,
+        username,
+        hasAvatar: !!avatar,
+      });
       await new Promise((r) => setTimeout(r, 1200));
     } finally {
       setLoading(false);
@@ -156,7 +251,6 @@ export default function Register() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.flex}
         >
-          {/* hero on gradient */}
           <Reveal reduce={reduce} delay={100} from={16} style={styles.hero}>
             <Animated.View
               style={[
@@ -208,6 +302,64 @@ export default function Register() {
               bounces={false}
             >
               <View style={styles.grabber} />
+
+              <Reveal reduce={reduce} delay={280} from={14}>
+                <View style={styles.avatarSection}>
+                  <Pressable
+                    onPress={onAvatarPress}
+                    onPressIn={() => avatarPressTo(0.95)}
+                    onPressOut={() => avatarPressTo(1)}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      avatar ? "Change profile photo" : "Add profile photo"
+                    }
+                  >
+                    <Animated.View
+                      style={[
+                        styles.avatarWrap,
+                        { transform: [{ scale: avatarScale }] },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.avatarCircle,
+                          avatar && styles.avatarCircleFilled,
+                        ]}
+                      >
+                        {avatar ? (
+                          <Image
+                            source={{ uri: avatar }}
+                            style={styles.avatarImage}
+                          />
+                        ) : (
+                          <Ionicons
+                            name="person"
+                            size={42}
+                            color={colors.primary}
+                          />
+                        )}
+                      </View>
+
+                      <LinearGradient
+                        colors={[colors.primary, palette.gradientEnd]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.avatarBadge}
+                      >
+                        <Ionicons
+                          name={avatar ? "pencil" : "camera"}
+                          size={15}
+                          color={palette.white}
+                        />
+                      </LinearGradient>
+                    </Animated.View>
+                  </Pressable>
+
+                  <Text style={styles.avatarLabel}>
+                    {avatar ? "Tap to change photo" : "Add profile photo"}
+                  </Text>
+                </View>
+              </Reveal>
 
               <Animated.View style={{ transform: [{ translateX: shake }] }}>
                 <Reveal reduce={reduce} delay={340} from={14}>

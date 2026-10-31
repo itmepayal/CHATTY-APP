@@ -1,19 +1,22 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  ActivityIndicator,
   Animated,
   Easing,
-  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  Text,
+  View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   useFonts,
@@ -23,14 +26,22 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import AuthInput from "../../components/forms/AuthInput";
-import { colors } from "../../constants/theme";
-
-const GRADIENT_END = "#7C5CFF";
+import {
+  Reveal,
+  ShimmerSweep,
+  useFloat,
+  useReduceMotion,
+} from "../../components/motion";
+import { colors, palette } from "../../constants/theme";
+import { styles } from "../../styles/reset-password.styles";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RESEND_SECONDS = 30;
 
 export default function ResetPassword() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const reduce = useReduceMotion();
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -43,50 +54,42 @@ export default function ResetPassword() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
-  // ---------- Animations ----------
-  const fade = useRef(new Animated.Value(0)).current;
-  const slide = useRef(new Animated.Value(16)).current;
-  const btnScale = useRef(new Animated.Value(1)).current;
-  const float = useRef(new Animated.Value(0)).current;
+  const press = useRef(new Animated.Value(1)).current;
+  const shake = useRef(new Animated.Value(0)).current;
+  const logoFloat = useFloat(reduce, 3200);
+  const arrow = useFloat(reduce, 900);
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, {
-        toValue: 1,
-        duration: 450,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(slide, {
-        toValue: 0,
-        duration: 450,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(float, {
-          toValue: -4,
-          duration: 1800,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(float, {
-          toValue: 0,
-          duration: 1800,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, []);
+  const pressTo = useCallback(
+    (v: number) =>
+      Animated.spring(press, {
+        toValue: v,
+        useNativeDriver: true,
+        friction: 7,
+        tension: 200,
+      }).start(),
+    [press],
+  );
 
-  // ---------- Validation ----------
+  const shakeForm = useCallback(() => {
+    if (reduce) return;
+    const step = (to: number) =>
+      Animated.timing(shake, {
+        toValue: to,
+        duration: 60,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      });
+    Animated.sequence([step(-8), step(8), step(-6), step(6), step(0)]).start();
+  }, [shake, reduce]);
+
   const errors = {
     email: !EMAIL_REGEX.test(email.trim()) ? "Enter a valid email" : "",
   };
@@ -94,25 +97,29 @@ export default function ResetPassword() {
 
   const onSend = async () => {
     setSubmitted(true);
-    if (!isValid || loading) return;
+    if (!isValid) {
+      shakeForm();
+      return;
+    }
+    if (loading) return;
     try {
       setLoading(true);
-      // TODO: yahan API logic aayega (send reset link / OTP)
       console.log("Reset password for", email.trim());
-      await new Promise((r) => setTimeout(r, 1200)); // demo delay, API lagate hi hata dena
+      await new Promise((r) => setTimeout(r, 1200));
       setSent(true);
+      setCooldown(RESEND_SECONDS);
     } finally {
       setLoading(false);
     }
   };
 
   const onResend = async () => {
-    if (loading) return;
+    if (loading || cooldown > 0) return;
     try {
       setLoading(true);
-      // TODO: resend API logic
       console.log("Resend reset link to", email.trim());
       await new Promise((r) => setTimeout(r, 1000));
+      setCooldown(RESEND_SECONDS);
     } finally {
       setLoading(false);
     }
@@ -120,356 +127,308 @@ export default function ResetPassword() {
 
   const goToLogin = () => router.replace("/auth/login");
 
-  const pressIn = () =>
-    Animated.spring(btnScale, { toValue: 0.97, useNativeDriver: true }).start();
-  const pressOut = () =>
-    Animated.spring(btnScale, {
-      toValue: 1,
-      friction: 4,
-      useNativeDriver: true,
-    }).start();
-
   if (!fontsLoaded) return null;
 
+  const base = sent ? 60 : 340;
+
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Decorative background blobs */}
-      <View style={styles.blobTop} pointerEvents="none" />
-      <View style={styles.blobBottom} pointerEvents="none" />
+    <LinearGradient
+      colors={[colors.gradientTop, colors.gradientBottom]}
+      start={{ x: 0.2, y: 0 }}
+      end={{ x: 0.8, y: 1 }}
+      style={styles.container}
+    >
+      <StatusBar barStyle="light-content" />
 
-      {/* Back button */}
-      <TouchableOpacity
-        style={styles.backBtn}
-        activeOpacity={0.8}
-        onPress={goToLogin}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <Ionicons name="arrow-back" size={20} color={colors.text} />
-      </TouchableOpacity>
+      <View pointerEvents="none" style={styles.blobTop} />
+      <View pointerEvents="none" style={styles.blobLeft} />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.flex}
-      >
-        <ScrollView
+      <SafeAreaView edges={["top"]} style={styles.safe}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.flex}
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
         >
-          <Animated.View
-            style={[
-              styles.content,
-              { opacity: fade, transform: [{ translateY: slide }] },
-            ]}
-          >
-            {/* Logo */}
-            <Animated.View
-              style={[styles.logoWrap, { transform: [{ translateY: float }] }]}
-            >
-              <View style={styles.logoRing} />
-              <LinearGradient
-                colors={[colors.primary, GRADIENT_END]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.logoBox}
+          <View style={styles.hero}>
+            <Reveal reduce={reduce} delay={100} from={16}>
+              <Animated.View
+                style={[
+                  styles.logoWrap,
+                  {
+                    transform: [
+                      {
+                        translateY: logoFloat.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0, -4],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
               >
-                <Ionicons
-                  name={sent ? "mail-open" : "key"}
-                  size={22}
-                  color="#fff"
-                />
-              </LinearGradient>
-            </Animated.View>
-
-            {!sent ? (
-              <>
-                <Text style={styles.heading}>
-                  Reset <Text style={styles.headingAccent}>Password</Text>
-                </Text>
-                <Text style={styles.sub}>
-                  Enter the email linked to your account and we'll send you a
-                  link to reset your password.
-                </Text>
-
-                {/* Form */}
-                <AuthInput
-                  label="Email"
-                  placeholder="name@example.com"
-                  leftIcon="mail-outline"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  valid={!errors.email}
-                  error={submitted ? errors.email : ""}
-                />
-
-                {/* Send button */}
-                <Animated.View
-                  style={{ transform: [{ scale: btnScale }], marginTop: 12 }}
+                <View style={styles.logoRing} />
+                <LinearGradient
+                  colors={[colors.primary, palette.gradientEnd]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.logoBox}
                 >
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={onSend}
-                    onPressIn={pressIn}
-                    onPressOut={pressOut}
-                    disabled={loading}
-                  >
-                    <LinearGradient
-                      colors={[colors.primary, GRADIENT_END]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.primaryBtn}
-                    >
-                      {loading ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <>
-                          <Text style={styles.primaryText}>
-                            Send Reset Link
-                          </Text>
-                          <View style={styles.arrowCircle}>
-                            <Ionicons
-                              name="arrow-forward"
-                              size={14}
-                              color={colors.primary}
-                            />
-                          </View>
-                        </>
-                      )}
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </Animated.View>
-              </>
-            ) : (
-              <>
-                <Text style={styles.heading}>
-                  Check Your <Text style={styles.headingAccent}>Email</Text>
-                </Text>
-                <Text style={styles.sub}>
-                  We've sent a password reset link to
-                </Text>
-                <Text style={styles.sentEmail}>{email.trim()}</Text>
+                  <Ionicons
+                    name={sent ? "mail-open" : "key"}
+                    size={20}
+                    color={palette.white}
+                  />
+                </LinearGradient>
+              </Animated.View>
+            </Reveal>
 
-                {/* Back to login */}
-                <Animated.View
-                  style={{ transform: [{ scale: btnScale }], marginTop: 12 }}
-                >
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={goToLogin}
-                    onPressIn={pressIn}
-                    onPressOut={pressOut}
-                  >
-                    <LinearGradient
-                      colors={[colors.primary, GRADIENT_END]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={styles.primaryBtn}
+            <Reveal
+              key={sent ? "hero-sent" : "hero-form"}
+              reduce={reduce}
+              delay={sent ? 0 : 160}
+              from={12}
+            >
+              <Text style={styles.title} accessibilityRole="header">
+                {sent ? "Check your email" : "Reset password"}
+              </Text>
+              <Text style={styles.subtitle}>
+                {sent
+                  ? "We've sent a password reset link to your inbox"
+                  : "Enter your email and we'll send you a reset link"}
+              </Text>
+            </Reveal>
+          </View>
+
+          <Reveal reduce={reduce} delay={200} from={60} style={styles.panel}>
+            <ScrollView
+              style={styles.panelScroll}
+              contentContainerStyle={[
+                styles.panelContent,
+                { paddingBottom: Math.max(insets.bottom, 16) + 20 },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <View style={styles.grabber} />
+
+              {!sent ? (
+                <>
+                  <Animated.View style={{ transform: [{ translateX: shake }] }}>
+                    <Reveal
+                      key="form-input"
+                      reduce={reduce}
+                      delay={base}
+                      from={14}
                     >
-                      <Text style={styles.primaryText}>Back to Login</Text>
-                      <View style={styles.arrowCircle}>
+                      <AuthInput
+                        label="Email"
+                        placeholder="name@example.com"
+                        leftIcon="mail-outline"
+                        value={email}
+                        onChangeText={setEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        valid={!!email && !errors.email}
+                        error={submitted ? errors.email : ""}
+                      />
+                    </Reveal>
+                  </Animated.View>
+
+                  <Reveal
+                    key="form-button"
+                    reduce={reduce}
+                    delay={base + 80}
+                    from={16}
+                    scaleFrom={0.97}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Pressable
+                      onPress={onSend}
+                      onPressIn={() => pressTo(0.98)}
+                      onPressOut={() => pressTo(1)}
+                      disabled={loading}
+                      accessibilityRole="button"
+                      accessibilityLabel="Send reset link"
+                      accessibilityState={{ busy: loading, disabled: loading }}
+                    >
+                      <Animated.View style={{ transform: [{ scale: press }] }}>
+                        <LinearGradient
+                          colors={[colors.primary, palette.gradientEnd]}
+                          start={{ x: 0, y: 0.5 }}
+                          end={{ x: 1, y: 0.5 }}
+                          style={styles.primaryBtn}
+                        >
+                          {loading ? (
+                            <ActivityIndicator color={palette.white} />
+                          ) : (
+                            <>
+                              <Text style={styles.primaryText}>
+                                Send reset link
+                              </Text>
+                              <Animated.View
+                                style={{
+                                  transform: [
+                                    {
+                                      translateX: arrow.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [0, 4],
+                                      }),
+                                    },
+                                  ],
+                                }}
+                              >
+                                <Ionicons
+                                  name="arrow-forward"
+                                  size={17}
+                                  color={palette.white}
+                                />
+                              </Animated.View>
+                              <ShimmerSweep reduce={reduce} />
+                            </>
+                          )}
+                        </LinearGradient>
+                      </Animated.View>
+                    </Pressable>
+                  </Reveal>
+
+                  <Reveal
+                    key="form-footer"
+                    reduce={reduce}
+                    delay={base + 160}
+                    from={8}
+                  >
+                    <View style={styles.footer}>
+                      <Text style={styles.footerText}>
+                        Remember your password?{" "}
+                      </Text>
+                      <Pressable
+                        onPress={goToLogin}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Log in"
+                      >
+                        <Text style={styles.footerLink}>Login</Text>
+                      </Pressable>
+                    </View>
+                  </Reveal>
+                </>
+              ) : (
+                <>
+                  <Reveal
+                    key="sent-chip"
+                    reduce={reduce}
+                    delay={base}
+                    from={14}
+                    scaleFrom={0.96}
+                  >
+                    <View style={styles.emailChip}>
+                      <View style={styles.emailChipIcon}>
                         <Ionicons
-                          name="arrow-forward"
-                          size={14}
+                          name="mail-outline"
+                          size={18}
                           color={colors.primary}
                         />
                       </View>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </Animated.View>
+                      <View style={styles.emailChipBody}>
+                        <Text style={styles.emailChipLabel}>Sent to</Text>
+                        <Text style={styles.emailChipText} numberOfLines={1}>
+                          {email.trim()}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.hint}>
+                      Can't find it? Check your spam folder or try resending the
+                      link.
+                    </Text>
+                  </Reveal>
 
-                <View style={styles.footer}>
-                  <Text style={styles.footerText}>Didn't get the email? </Text>
-                  <TouchableOpacity
-                    onPress={onResend}
-                    disabled={loading}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  <Reveal
+                    key="sent-button"
+                    reduce={reduce}
+                    delay={base + 80}
+                    from={16}
+                    scaleFrom={0.97}
                   >
-                    {loading ? (
-                      <ActivityIndicator size="small" color={colors.primary} />
-                    ) : (
-                      <Text style={styles.footerLink}>Resend</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+                    <Pressable
+                      onPress={goToLogin}
+                      onPressIn={() => pressTo(0.98)}
+                      onPressOut={() => pressTo(1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Back to login"
+                    >
+                      <Animated.View style={{ transform: [{ scale: press }] }}>
+                        <LinearGradient
+                          colors={[colors.primary, palette.gradientEnd]}
+                          start={{ x: 0, y: 0.5 }}
+                          end={{ x: 1, y: 0.5 }}
+                          style={styles.primaryBtn}
+                        >
+                          <Text style={styles.primaryText}>Back to login</Text>
+                          <Animated.View
+                            style={{
+                              transform: [
+                                {
+                                  translateX: arrow.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [0, 4],
+                                  }),
+                                },
+                              ],
+                            }}
+                          >
+                            <Ionicons
+                              name="arrow-forward"
+                              size={17}
+                              color={palette.white}
+                            />
+                          </Animated.View>
+                          <ShimmerSweep reduce={reduce} />
+                        </LinearGradient>
+                      </Animated.View>
+                    </Pressable>
+                  </Reveal>
 
-            {!sent && (
-              <View style={styles.footer}>
-                <Text style={styles.footerText}>Remember your password? </Text>
-                <TouchableOpacity
-                  onPress={goToLogin}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.footerLink}>Login</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+                  <Reveal
+                    key="sent-footer"
+                    reduce={reduce}
+                    delay={base + 160}
+                    from={8}
+                  >
+                    <View style={styles.footer}>
+                      <Text style={styles.footerText}>
+                        Didn't get the email?{" "}
+                      </Text>
+                      <Pressable
+                        onPress={onResend}
+                        disabled={loading || cooldown > 0}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Resend reset link"
+                      >
+                        {loading ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={colors.primary}
+                          />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.footerLink,
+                              cooldown > 0 && styles.footerLinkDisabled,
+                            ]}
+                          >
+                            {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend"}
+                          </Text>
+                        )}
+                      </Pressable>
+                    </View>
+                  </Reveal>
+                </>
+              )}
+            </ScrollView>
+          </Reveal>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  safe: { flex: 1, backgroundColor: colors.bg, overflow: "hidden" },
-
-  container: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 8,
-  },
-  content: { width: "100%", maxWidth: 420, alignSelf: "center" },
-
-  // Back button
-  backBtn: {
-    position: "absolute",
-    top: 52,
-    left: 20,
-    zIndex: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-
-  // Background decoration
-  blobTop: {
-    position: "absolute",
-    top: -90,
-    right: -70,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: colors.primaryLight,
-    opacity: 0.75,
-  },
-  blobBottom: {
-    position: "absolute",
-    bottom: -100,
-    left: -70,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: colors.primaryLight,
-    opacity: 0.5,
-  },
-
-  // Logo (compact)
-  logoWrap: {
-    alignSelf: "center",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 60,
-    height: 60,
-  },
-  logoRing: {
-    position: "absolute",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.primaryLight,
-  },
-  logoBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.primary,
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
-  },
-
-  heading: {
-    alignSelf: "center",
-    fontFamily: "Poppins_700Bold",
-    fontSize: 22,
-    color: colors.text,
-    marginTop: 10,
-  },
-  headingAccent: { color: colors.primary, fontFamily: "Poppins_700Bold" },
-  sub: {
-    alignSelf: "center",
-    textAlign: "center",
-    fontFamily: "Poppins_400Regular",
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.muted,
-    marginTop: 4,
-    marginBottom: 18,
-    paddingHorizontal: 8,
-  },
-  sentEmail: {
-    alignSelf: "center",
-    textAlign: "center",
-    fontFamily: "Poppins_600SemiBold",
-    fontSize: 13,
-    color: colors.text,
-    marginTop: -12,
-    marginBottom: 18,
-  },
-
-  // Buttons
-  primaryBtn: {
-    height: 48,
-    borderRadius: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  primaryText: {
-    color: "#fff",
-    fontSize: 15,
-    fontFamily: "Poppins_600SemiBold",
-  },
-  arrowCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 16,
-  },
-  footerText: {
-    fontSize: 13,
-    color: colors.muted,
-    fontFamily: "Poppins_400Regular",
-  },
-  footerLink: {
-    fontSize: 13,
-    color: colors.primary,
-    fontFamily: "Poppins_700Bold",
-  },
-});

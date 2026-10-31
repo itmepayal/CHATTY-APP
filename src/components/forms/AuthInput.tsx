@@ -8,14 +8,7 @@ import {
   TextInputProps,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../../constants/theme";
-
-const fonts = {
-  regular: "Poppins_400Regular",
-  medium: "Poppins_500Medium",
-  semiBold: "Poppins_600SemiBold",
-  bold: "Poppins_700Bold",
-};
+import { colors, fonts, palette } from "../../constants/theme";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -28,6 +21,9 @@ type Props = TextInputProps & {
   leftIcon?: IconName;
   valid?: boolean;
 };
+
+const ERROR = "#EF4444";
+const PLACEHOLDER = "#A9ACC4";
 
 export default function AuthInput({
   label,
@@ -44,15 +40,11 @@ export default function AuthInput({
   const [hidden, setHidden] = useState(!!isPassword);
   const [focused, setFocused] = useState(false);
 
-  const borderColor = error
-    ? "#EF4444"
-    : focused
-      ? colors.primary
-      : colors.border;
-  const iconColor = error ? "#EF4444" : focused ? colors.primary : colors.muted;
+  const hasValue = !!rest.value && String(rest.value).length > 0;
 
-  // Error label ki line me dikhega (layout shift nahi hoga).
-  // Agar rightLabel (jaise "Forgot?") hai to error neeche dikhega.
+  const borderColor = error ? ERROR : focused ? colors.primary : colors.border;
+  const iconColor = error ? ERROR : focused ? colors.primary : colors.muted;
+
   const errorInline = !!error && !rightLabel;
   const errorBelow = !!error && !!rightLabel;
 
@@ -63,13 +55,17 @@ export default function AuthInput({
 
         {errorInline ? (
           <View style={styles.errorInline}>
-            <Ionicons name="alert-circle" size={12} color="#EF4444" />
+            <Ionicons name="alert-circle" size={12} color={ERROR} />
             <Text style={styles.errorText} numberOfLines={1}>
               {error}
             </Text>
           </View>
         ) : rightLabel ? (
-          <TouchableOpacity onPress={onRightLabelPress}>
+          <TouchableOpacity
+            onPress={onRightLabelPress}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+          >
             <Text style={styles.right}>{rightLabel}</Text>
           </TouchableOpacity>
         ) : null}
@@ -93,11 +89,12 @@ export default function AuthInput({
         ) : null}
 
         <TextInput
-          style={styles.input}
-          placeholderTextColor="#A9ACC4"
+          style={[styles.input, { fontSize: hasValue ? 14 : 12 }]}
+          placeholderTextColor={PLACEHOLDER}
           secureTextEntry={hidden}
           autoCapitalize="none"
           selectionColor={colors.primary}
+          accessibilityLabel={label}
           onFocus={(e) => {
             setFocused(true);
             onFocus?.(e);
@@ -113,6 +110,8 @@ export default function AuthInput({
           <TouchableOpacity
             onPress={() => setHidden((h) => !h)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={hidden ? "Show password" : "Hide password"}
           >
             <Ionicons
               name={hidden ? "eye-off-outline" : "eye-outline"}
@@ -121,13 +120,13 @@ export default function AuthInput({
             />
           </TouchableOpacity>
         ) : valid ? (
-          <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
+          <Ionicons name="checkmark-circle" size={18} color={palette.success} />
         ) : null}
       </View>
 
       {errorBelow ? (
         <View style={styles.errorBelow}>
-          <Ionicons name="alert-circle" size={12} color="#EF4444" />
+          <Ionicons name="alert-circle" size={12} color={ERROR} />
           <Text style={styles.errorText} numberOfLines={1}>
             {error}
           </Text>
@@ -138,31 +137,43 @@ export default function AuthInput({
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 8, width: "100%" },
+  wrap: { marginBottom: 14, width: "100%" },
   labelRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 5,
-    minHeight: 16,
+    marginBottom: 7,
+    minHeight: 18,
   },
-  label: { fontFamily: fonts.medium, fontSize: 12, color: colors.text },
-  right: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.primary },
+  label: {
+    fontFamily: fonts.medium,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: palette.ink,
+    includeFontPadding: false,
+  },
+  right: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.primary,
+    includeFontPadding: false,
+  },
   inputBox: {
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1.2,
-    borderRadius: 12,
-    backgroundColor: colors.inputBg,
-    paddingHorizontal: 12,
-    height: 44,
+    borderRadius: 14,
+    backgroundColor: palette.surfaceMuted,
+    paddingHorizontal: 14,
+    height: 52,
   },
   inputFocused: {
-    backgroundColor: "#fff",
+    backgroundColor: palette.white,
     shadowColor: colors.primary,
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
   inputError: { backgroundColor: "#FEF2F2" },
@@ -171,9 +182,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     fontFamily: fonts.regular,
-    fontSize: 14,
-    color: colors.text,
+    color: palette.ink,
     paddingVertical: 0,
+    includeFontPadding: false,
   },
   errorInline: {
     flexDirection: "row",
@@ -186,13 +197,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: 4,
+    marginTop: 5,
     marginLeft: 2,
   },
   errorText: {
     flexShrink: 1,
     fontFamily: fonts.regular,
     fontSize: 11,
-    color: "#EF4444",
+    color: ERROR,
+    includeFontPadding: false,
   },
 });

@@ -21,7 +21,6 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import { colors } from "../constants/theme";
-import NewChat from "./new-chat";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -250,19 +249,75 @@ export default function TabsLayout() {
       backBehavior="history"
       screenOptions={{ headerShown: false }}
     >
+      {/* Main tabs */}
       <Tabs.Screen name="chats" options={{ title: "Chats", tabBarBadge: 3 }} />
       <Tabs.Screen name="calls" options={{ title: "Calls" }} />
       <Tabs.Screen name="groups" options={{ title: "Groups" }} />
       <Tabs.Screen name="settings" options={{ title: "Settings" }} />
 
-      <Tabs.Screen name="index" options={{ href: null }} />
-      <Tabs.Screen name="chat/[id]" options={{ href: null }} />
-      <Tabs.Screen name="chat-info/[id]" options={{ href: null }} />
-      <Tabs.Screen name="call/[id]" options={{ href: null }} />
-      <Tabs.Screen name="video-call/[id]" options={{ href: null }} />
+      {/* Settings sub-screens */}
+      <Tabs.Screen name="settings/security" options={{ title: "Security" }} />
+      <Tabs.Screen name="settings/privacy" options={{ title: "Privacy" }} />
+      <Tabs.Screen
+        name="settings/appearance"
+        options={{ title: "Appearance" }}
+      />
+      <Tabs.Screen
+        name="settings/chat-settings"
+        options={{ title: "ChatSettings" }}
+      />
+      <Tabs.Screen
+        name="settings/notifications-settings"
+        options={{ title: "Notifications" }}
+      />
+      <Tabs.Screen
+        name="settings/data-storage"
+        options={{ title: "DataStorage" }}
+      />
+      <Tabs.Screen name="settings/help" options={{ title: "Help" }} />
+      <Tabs.Screen name="settings/profile" options={{ title: "Profile" }} />
+      <Tabs.Screen name="settings/sessions" options={{ title: "Sessions" }} />
+      <Tabs.Screen
+        name="settings/change-password"
+        options={{ title: "ChangePassword" }}
+      />
+      <Tabs.Screen
+        name="settings/recovery-codes"
+        options={{ title: "RecoveryCodes" }}
+      />
+      <Tabs.Screen
+        name="settings/two-factor-setup"
+        options={{ title: "TwoFactorSetup" }}
+      />
+      <Tabs.Screen
+        name="settings/two-factor-disable"
+        options={{ title: "TwoFactorDisable" }}
+      />
+      <Tabs.Screen
+        name="settings/two-factor-login"
+        options={{ title: "TwoFactorLogin" }}
+      />
+      <Tabs.Screen
+        name="settings/delete-account"
+        options={{ title: "DeleteAccount" }}
+      />
+
+      {/* Auth */}
+      <Tabs.Screen name="auth/login" options={{ title: "Login" }} />
+      <Tabs.Screen name="auth/register" options={{ title: "Register" }} />
+      <Tabs.Screen
+        name="auth/reset-password"
+        options={{ title: "ResetPassword" }}
+      />
+
+      {/* Others */}
+      <Tabs.Screen name="index" options={{ title: "GetStarted" }} />
+      <Tabs.Screen name="chat/[id]" options={{ title: "ChatScreen" }} />
+      <Tabs.Screen name="chat-info/[id]" options={{ title: "ChatInfo" }} />
+      <Tabs.Screen name="call/[id]" options={{ title: "CallDetail" }} />
+      <Tabs.Screen name="video-call/[id]" options={{ title: "VideoCall" }} />
       <Tabs.Screen name="new-chat" options={{ title: "NewChat" }} />
       <Tabs.Screen name="new-group" options={{ title: "NewGroup" }} />
-      <Tabs.Screen name="notifications" options={{ href: null }} />
     </Tabs>
   );
 }
@@ -313,11 +368,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  tabInner: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 3,
-  },
+  tabInner: { alignItems: "center", justifyContent: "center", paddingTop: 3 },
   label: {
     marginTop: 3,
     fontSize: 10.5,
@@ -326,10 +377,7 @@ const styles = StyleSheet.create({
     color: INACTIVE,
     includeFontPadding: false,
   },
-  labelActive: {
-    fontFamily: "Poppins_600SemiBold",
-    color: colors.primary,
-  },
+  labelActive: { fontFamily: "Poppins_600SemiBold", color: colors.primary },
   badge: {
     position: "absolute",
     top: -6,

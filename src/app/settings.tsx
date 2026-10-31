@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import {
   ActionSheet,
   Avatar,
+  BG,
   DANGER,
   EmptyState,
   HeaderButton,
@@ -15,7 +16,6 @@ import {
   PreviewText,
   RowMeta,
   SURFACE,
-  BG,
   Screen,
   ScreenTop,
   SearchBar,
@@ -24,6 +24,8 @@ import {
   SheetAction,
   StripItem,
   StripSection,
+  TEXT,
+  TabPills,
   Text,
   Tint,
   colors,
@@ -33,7 +35,6 @@ import {
   space,
   useReduceMotion,
   useScrolled,
-  TEXT,
 } from "../components/ui";
 
 type Group = "Account" | "Preferences" | "Support";
@@ -61,24 +62,24 @@ const ITEMS: SettingItem[] = [
   {
     id: "account",
     label: "Account & Security",
-    sub: "Passkeys, 2FA, password",
-    value: "2 enabled",
+    sub: "Password, two-factor, devices",
+    value: "2FA on",
     group: "Account",
     icon: "shield-checkmark-outline",
     quick: true,
     tint: ["#EDE9FE", "#6D28D9"],
-    route: "/security",
-    keywords: "password passkey 2fa two factor login devices sessions",
+    route: "/settings/security",
+    keywords: "password passkey 2fa two factor login devices sessions delete",
   },
   {
     id: "privacy",
     label: "Privacy",
-    sub: "Last seen, read receipts, blocked",
+    sub: "Last seen, read receipts, photo",
     group: "Account",
     icon: "lock-closed-outline",
     quick: true,
     tint: ["#DBEAFE", "#1D4ED8"],
-    route: "/privacy",
+    route: "/settings/privacy",
     keywords: "last seen online read receipts block profile photo",
   },
   {
@@ -90,30 +91,30 @@ const ITEMS: SettingItem[] = [
     icon: "notifications-outline",
     quick: true,
     tint: ["#FEF3C7", "#B45309"],
-    route: "/notifications-settings",
+    route: "/settings/notifications-settings",
     keywords: "alerts sound mute quiet hours do not disturb mention",
   },
   {
     id: "appearance",
     label: "Appearance",
-    sub: "Theme, font size, bubble style",
+    sub: "Theme, text size, bubble style",
     value: "Light",
     group: "Preferences",
     icon: "color-palette-outline",
     quick: true,
     tint: ["#FCE7F3", "#BE185D"],
-    route: "/appearance",
+    route: "/settings/appearance",
     keywords: "theme dark mode light font size bubble spacing",
   },
   {
     id: "chat",
     label: "Chat Settings",
-    sub: "Disappearing, pinned, scheduled",
+    sub: "Enter key, downloads, disappearing",
     group: "Preferences",
     icon: "chatbubble-ellipses-outline",
     tint: ["#D1FAE5", "#047857"],
-    route: "/chat-settings",
-    keywords: "disappearing messages pinned scheduled wallpaper",
+    route: "/settings/chat-settings",
+    keywords: "disappearing messages archived link preview enter",
   },
   {
     id: "data",
@@ -123,7 +124,7 @@ const ITEMS: SettingItem[] = [
     group: "Support",
     icon: "server-outline",
     tint: ["#CFFAFE", "#0E7490"],
-    route: "/data-storage",
+    route: "/settings/data-storage",
     keywords: "storage cache backup download media network usage",
   },
   {
@@ -133,11 +134,13 @@ const ITEMS: SettingItem[] = [
     group: "Support",
     icon: "help-circle-outline",
     tint: ["#FFE8D6", "#C2410C"],
-    route: "/help",
+    route: "/settings/help",
     keywords: "faq contact feedback report bug about version",
   },
 ];
 
+const TABS = ["All", "Account", "Preferences", "Support"] as const;
+type Tab = (typeof TABS)[number];
 const GROUPS: Group[] = ["Account", "Preferences", "Support"];
 
 function ProfileCard({ onPress }: { onPress: () => void }) {
@@ -177,12 +180,14 @@ export default function Settings() {
   const reduceMotion = useReduceMotion();
   const { scrolled, onScroll } = useScrolled();
 
+  const [tab, setTab] = useState<Tab>("All");
   const [query, setQuery] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const q = query.trim().toLowerCase();
 
   const sections = useMemo(() => {
     const filtered = ITEMS.filter((i) => {
+      if (tab !== "All" && i.group !== tab) return false;
       if (!q) return true;
       return (
         i.label.toLowerCase().includes(q) ||
@@ -194,18 +199,19 @@ export default function Settings() {
       title: g,
       data: filtered.filter((i) => i.group === g),
     })).filter((sec) => sec.data.length > 0);
-  }, [q]);
+  }, [q, tab]);
 
   const quick = useMemo(() => ITEMS.filter((i) => i.quick), []);
+  const showHeader = !q && tab === "All";
 
   const logout = () => {
     setSheetOpen(false);
-    router.replace("/login" as never);
+    router.replace("/auth/login" as never);
   };
 
   const logoutAll = () => {
     setSheetOpen(false);
-    go("/sessions");
+    go("/settings/sessions");
   };
 
   return (
@@ -237,6 +243,7 @@ export default function Settings() {
           placeholder="Search settings"
           label="Search settings"
         />
+        <TabPills tabs={TABS} active={tab} onChange={setTab} />
       </ScreenTop>
 
       <SectionList
@@ -249,9 +256,9 @@ export default function Settings() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={listContentStyle}
         ListHeaderComponent={
-          !q ? (
+          showHeader ? (
             <>
-              <ProfileCard onPress={() => go("/profile")} />
+              <ProfileCard onPress={() => go("/settings/profile")} />
               <StripSection title="Quick access">
                 {quick.map((i) => (
                   <StripItem
@@ -277,9 +284,8 @@ export default function Settings() {
             title={item.label}
             time={item.value}
             onPress={() => go(item.route)}
-            accessibilityLabel={`${item.label}. ${item.sub}${
-              item.value ? `. ${item.value}` : ""
-            }`}
+            accessibilityHint="Opens this setting"
+            accessibilityLabel={`${item.label}. ${item.sub}${item.value ? `. ${item.value}` : ""}`}
           >
             <PreviewText>{item.sub}</PreviewText>
             <RowMeta>
@@ -290,13 +296,19 @@ export default function Settings() {
         ItemSeparatorComponent={Separator}
         ListEmptyComponent={
           <EmptyState
-            icon="search"
-            title={`No results for “${query.trim()}”`}
-            subtitle="Check the spelling or try a different word."
+            icon={q ? "search" : "settings-outline"}
+            title={q ? `No results for “${query.trim()}”` : "Nothing here"}
+            subtitle={
+              q
+                ? "Check the spelling or try a different word."
+                : "No settings in this section yet."
+            }
           />
         }
         ListFooterComponent={
-          !q ? <Text style={local.version}>Chatty v1.0.0</Text> : undefined
+          showHeader ? (
+            <Text style={local.version}>Chatty v1.0.0</Text>
+          ) : undefined
         }
       />
 
@@ -317,7 +329,7 @@ export default function Settings() {
         />
         <SheetAction
           icon="phone-portrait"
-          label="Log out from all devices"
+          label="Manage other devices"
           onPress={logoutAll}
           danger
         />

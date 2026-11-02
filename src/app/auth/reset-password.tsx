@@ -3,11 +3,13 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -26,22 +28,60 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import AuthInput from "../../components/forms/AuthInput";
+import AppAlert, {
+  AlertButton,
+  AlertType,
+} from "../../components/common/AppAlert";
 import {
   Reveal,
   ShimmerSweep,
   useFloat,
   useReduceMotion,
 } from "../../components/motion";
-import { colors, palette } from "../../constants/theme";
-import { styles } from "../../styles/reset-password.styles";
+import { useTheme } from "../../theme/theme";
+import { useStyles } from "../../styles/reset-password.styles";
+import { authApi } from "../../lib/api/auth.api";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RESEND_SECONDS = 30;
+
+const BTN_WRAP = { marginTop: 6 } as const;
+
+type AlertState = {
+  visible: boolean;
+  type: AlertType;
+  title: string;
+  message?: string;
+  buttons?: AlertButton[];
+  dismissible?: boolean;
+};
+
+const ALERT_CLOSED: AlertState = {
+  visible: false,
+  type: "info",
+  title: "",
+};
+
+const getResetErrorMessage = (error: any): string => {
+  const status = error?.response?.status;
+  const serverMsg = error?.response?.data?.message;
+
+  if (!error?.response) {
+    return "Network error. Please check your internet connection and try again.";
+  }
+  if (serverMsg && typeof serverMsg === "string") return serverMsg;
+  if (status === 404) return "No account found with this email.";
+  if (status === 429) return "Too many attempts. Please try again later.";
+  if (status >= 500) return "Server error. Please try again in a moment.";
+  return error?.message || "Something went wrong. Please try again.";
+};
 
 export default function ResetPassword() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reduce = useReduceMotion();
+  const { colors } = useTheme();
+  const styles = useStyles();
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -51,10 +91,13 @@ export default function ResetPassword() {
   });
 
   const [email, setEmail] = useState("");
+  // Form clear hone ke baad bhi "Sent to" chip aur Resend ke liye email yaha rehta hai.
+  const [sentEmail, setSentEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [alertState, setAlertState] = useState<AlertState>(ALERT_CLOSED);
 
   const press = useRef(new Animated.Value(1)).current;
   const shake = useRef(new Animated.Value(0)).current;
@@ -66,6 +109,30 @@ export default function ResetPassword() {
     const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(t);
   }, [cooldown]);
+
+  const showAlert = useCallback(
+    (
+      type: AlertType,
+      title: string,
+      message?: string,
+      buttons?: AlertButton[],
+      dismissible = true,
+    ) => {
+      setAlertState({
+        visible: true,
+        type,
+        title,
+        message,
+        buttons,
+        dismissible,
+      });
+    },
+    [],
+  );
+
+  const closeAlert = useCallback(() => {
+    setAlertState((prev) => ({ ...prev, visible: false }));
+  }, []);
 
   const pressTo = useCallback(
     (v: number) =>
@@ -96,40 +163,71 @@ export default function ResetPassword() {
   const isValid = !errors.email;
 
   const onSend = async () => {
+    if (loading) return;
     setSubmitted(true);
     if (!isValid) {
       shakeForm();
       return;
     }
-    if (loading) return;
+
+    Keyboard.dismiss();
+
+    const targetEmail = email.trim();
+
     try {
       setLoading(true);
-      console.log("Reset password for", email.trim());
-      await new Promise((r) => setTimeout(r, 1200));
+
+      // authApi.forgotPassword email ko trim + lowercase khud kar deta hai
+      await authApi.forgotPassword({ email: targetEmail });
+
+      // Success ke baad: email yaad rakho, form clear karo
+      setSentEmail(targetEmail);
+      setEmail("");
+      setSubmitted(false);
+
       setSent(true);
       setCooldown(RESEND_SECONDS);
+    } catch (error: any) {
+      // Error par form clear nahi hota, taaki user dobara try kar sake
+      shakeForm();
+      showAlert("error", "Could not send link", getResetErrorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
   const onResend = async () => {
-    if (loading || cooldown > 0) return;
+    if (loading || cooldown > 0 || !sentEmail) return;
     try {
       setLoading(true);
-      console.log("Resend reset link to", email.trim());
-      await new Promise((r) => setTimeout(r, 1000));
+
+      await authApi.forgotPassword({ email: sentEmail });
+
       setCooldown(RESEND_SECONDS);
+      showAlert(
+        "success",
+        "Link sent again",
+        "Reset link dobara bhej diya gaya hai. Inbox ya spam folder check karo.",
+      );
+    } catch (error: any) {
+      showAlert("error", "Could not resend", getResetErrorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
-  const goToLogin = () => router.replace("/auth/login");
+  const goToLogin = useCallback(() => router.replace("/auth/login"), [router]);
+
+  // onSend har render par naya banta hai, isliye ref se stable wrapper.
+  const onSendRef = useRef(onSend);
+  onSendRef.current = onSend;
+  const submitFromKeyboard = useCallback(() => {
+    onSendRef.current();
+  }, []);
 
   if (!fontsLoaded) return null;
 
-  const base = sent ? 60 : 340;
+  const base = sent ? 60 : 280;
 
   return (
     <LinearGradient
@@ -144,8 +242,9 @@ export default function ResetPassword() {
       <View pointerEvents="none" style={styles.blobLeft} />
 
       <SafeAreaView edges={["top"]} style={styles.safe}>
+        {/* Android par system khud resize karta hai, isliye sirf iOS par "padding". */}
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.flex}
         >
           <View style={styles.hero}>
@@ -167,15 +266,15 @@ export default function ResetPassword() {
               >
                 <View style={styles.logoRing} />
                 <LinearGradient
-                  colors={[colors.primary, palette.gradientEnd]}
+                  colors={[colors.primary, colors.gradientEnd]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={styles.logoBox}
                 >
                   <Ionicons
                     name={sent ? "mail-open" : "key"}
-                    size={20}
-                    color={palette.white}
+                    size={19}
+                    color={colors.white}
                   />
                 </LinearGradient>
               </Animated.View>
@@ -187,10 +286,10 @@ export default function ResetPassword() {
               delay={sent ? 0 : 160}
               from={12}
             >
-              <Text style={styles.title} accessibilityRole="header">
+              <Text style={[styles.title]} accessibilityRole="header">
                 {sent ? "Check your email" : "Reset password"}
               </Text>
-              <Text style={styles.subtitle}>
+              <Text style={[styles.subtitle]}>
                 {sent
                   ? "We've sent a password reset link to your inbox"
                   : "Enter your email and we'll send you a reset link"}
@@ -208,39 +307,38 @@ export default function ResetPassword() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               bounces={false}
+              overScrollMode="never"
             >
               <View style={styles.grabber} />
 
               {!sent ? (
                 <>
+                  {/* Input ke upar Reveal nahi: typing ke time flicker hota tha. */}
                   <Animated.View style={{ transform: [{ translateX: shake }] }}>
-                    <Reveal
-                      key="form-input"
-                      reduce={reduce}
-                      delay={base}
-                      from={14}
-                    >
-                      <AuthInput
-                        label="Email"
-                        placeholder="name@example.com"
-                        leftIcon="mail-outline"
-                        value={email}
-                        onChangeText={setEmail}
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        valid={!!email && !errors.email}
-                        error={submitted ? errors.email : ""}
-                      />
-                    </Reveal>
+                    <AuthInput
+                      label="Email"
+                      placeholder="name@example.com"
+                      leftIcon="mail-outline"
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="send"
+                      onSubmitEditing={submitFromKeyboard}
+                      editable={!loading}
+                      valid={!!email && !errors.email}
+                      error={submitted ? errors.email : ""}
+                    />
                   </Animated.View>
 
                   <Reveal
                     key="form-button"
                     reduce={reduce}
-                    delay={base + 80}
+                    delay={base}
                     from={16}
                     scaleFrom={0.97}
-                    style={{ marginTop: 8 }}
+                    style={BTN_WRAP}
                   >
                     <Pressable
                       onPress={onSend}
@@ -253,16 +351,16 @@ export default function ResetPassword() {
                     >
                       <Animated.View style={{ transform: [{ scale: press }] }}>
                         <LinearGradient
-                          colors={[colors.primary, palette.gradientEnd]}
+                          colors={[colors.primary, colors.gradientEnd]}
                           start={{ x: 0, y: 0.5 }}
                           end={{ x: 1, y: 0.5 }}
-                          style={styles.primaryBtn}
+                          style={[styles.primaryBtn]}
                         >
                           {loading ? (
-                            <ActivityIndicator color={palette.white} />
+                            <ActivityIndicator color={colors.white} />
                           ) : (
                             <>
-                              <Text style={styles.primaryText}>
+                              <Text style={[styles.primaryText]}>
                                 Send reset link
                               </Text>
                               <Animated.View
@@ -279,8 +377,8 @@ export default function ResetPassword() {
                               >
                                 <Ionicons
                                   name="arrow-forward"
-                                  size={17}
-                                  color={palette.white}
+                                  size={16}
+                                  color={colors.white}
                                 />
                               </Animated.View>
                               <ShimmerSweep reduce={reduce} />
@@ -294,20 +392,21 @@ export default function ResetPassword() {
                   <Reveal
                     key="form-footer"
                     reduce={reduce}
-                    delay={base + 160}
+                    delay={base + 80}
                     from={8}
                   >
                     <View style={styles.footer}>
-                      <Text style={styles.footerText}>
+                      <Text style={[styles.footerText]}>
                         Remember your password?{" "}
                       </Text>
                       <Pressable
                         onPress={goToLogin}
                         hitSlop={8}
+                        disabled={loading}
                         accessibilityRole="button"
                         accessibilityLabel="Log in"
                       >
-                        <Text style={styles.footerLink}>Login</Text>
+                        <Text style={[styles.footerLink]}>Login</Text>
                       </Pressable>
                     </View>
                   </Reveal>
@@ -325,18 +424,18 @@ export default function ResetPassword() {
                       <View style={styles.emailChipIcon}>
                         <Ionicons
                           name="mail-outline"
-                          size={18}
+                          size={17}
                           color={colors.primary}
                         />
                       </View>
                       <View style={styles.emailChipBody}>
-                        <Text style={styles.emailChipLabel}>Sent to</Text>
-                        <Text style={styles.emailChipText} numberOfLines={1}>
-                          {email.trim()}
+                        <Text style={[styles.emailChipLabel]}>Sent to</Text>
+                        <Text style={[styles.emailChipText]} numberOfLines={1}>
+                          {sentEmail}
                         </Text>
                       </View>
                     </View>
-                    <Text style={styles.hint}>
+                    <Text style={[styles.hint]}>
                       Can't find it? Check your spam folder or try resending the
                       link.
                     </Text>
@@ -358,12 +457,14 @@ export default function ResetPassword() {
                     >
                       <Animated.View style={{ transform: [{ scale: press }] }}>
                         <LinearGradient
-                          colors={[colors.primary, palette.gradientEnd]}
+                          colors={[colors.primary, colors.gradientEnd]}
                           start={{ x: 0, y: 0.5 }}
                           end={{ x: 1, y: 0.5 }}
-                          style={styles.primaryBtn}
+                          style={[styles.primaryBtn]}
                         >
-                          <Text style={styles.primaryText}>Back to login</Text>
+                          <Text style={[styles.primaryText]}>
+                            Back to login
+                          </Text>
                           <Animated.View
                             style={{
                               transform: [
@@ -378,8 +479,8 @@ export default function ResetPassword() {
                           >
                             <Ionicons
                               name="arrow-forward"
-                              size={17}
-                              color={palette.white}
+                              size={16}
+                              color={colors.white}
                             />
                           </Animated.View>
                           <ShimmerSweep reduce={reduce} />
@@ -395,7 +496,7 @@ export default function ResetPassword() {
                     from={8}
                   >
                     <View style={styles.footer}>
-                      <Text style={styles.footerText}>
+                      <Text style={[styles.footerText]}>
                         Didn't get the email?{" "}
                       </Text>
                       <Pressable
@@ -429,6 +530,16 @@ export default function ResetPassword() {
           </Reveal>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <AppAlert
+        visible={alertState.visible}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        dismissible={alertState.dismissible}
+        onClose={closeAlert}
+      />
     </LinearGradient>
   );
 }

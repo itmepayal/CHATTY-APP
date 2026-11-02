@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Easing,
   Image,
@@ -10,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StatusBar,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -28,18 +28,28 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
-import AuthInput from "../../components/forms/AuthInput";
+import AuthInput, { AuthInputRef } from "../../components/forms/AuthInput";
 import GoogleIcon from "../../components/icons/GoogleIcon";
+import AppAlert, {
+  AlertButton,
+  AlertType,
+} from "../../components/common/AppAlert";
+import PhotoPickerSheet from "../../components/common/PhotoPickerSheet";
 import {
   Reveal,
   ShimmerSweep,
   useFloat,
   useReduceMotion,
 } from "../../components/motion";
-import { colors, palette } from "../../constants/theme";
-import { styles } from "../../styles/register.styles";
+import { useTheme } from "../../theme/theme";
+import { useStyles } from "../../styles/register.styles";
+import { authApi } from "../../lib/api/auth.api";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const AFTER_REGISTER_ROUTE = "/auth/login";
+
+const REGISTER_BTN_WRAP = { marginTop: 6 } as const;
 
 const getPasswordStrength = (pwd: string) => {
   let score = 0;
@@ -50,18 +60,62 @@ const getPasswordStrength = (pwd: string) => {
   return score; // 0 - 4
 };
 
-const STRENGTH_META = [
-  { label: "Too short", color: "#E5E7EB" },
-  { label: "Weak", color: "#EF4444" },
-  { label: "Okay", color: "#F59E0B" },
-  { label: "Good", color: "#22C55E" },
-  { label: "Strong", color: "#16A34A" },
-];
+const getErrorMessage = (error: any): string => {
+  if (error?.response) {
+    const data = error.response.data;
+    const msg =
+      (typeof data === "string" && data) ||
+      data?.message ||
+      data?.error ||
+      (Array.isArray(data?.errors) && data.errors[0]?.message) ||
+      "";
+    if (msg) return String(msg);
+
+    switch (error.response.status) {
+      case 400:
+        return "Invalid details. Please check and try again.";
+      case 409:
+        return "Email or username already exists.";
+      case 413:
+        return "Profile photo is too large. Choose a smaller one.";
+      case 422:
+        return "Some fields are invalid.";
+      case 500:
+        return "Server error. Please try again later.";
+      default:
+        return `Something went wrong (${error.response.status}).`;
+    }
+  }
+  if (error?.code === "ECONNABORTED") {
+    return "Request timed out. Please try again.";
+  }
+  if (error?.request || error?.message === "Network Error") {
+    return "Cannot reach the server. Check your internet connection.";
+  }
+  return error?.message || "Something went wrong. Please try again.";
+};
+
+type AlertState = {
+  visible: boolean;
+  type: AlertType;
+  title: string;
+  message?: string;
+  buttons?: AlertButton[];
+  dismissible?: boolean;
+};
+
+const ALERT_CLOSED: AlertState = {
+  visible: false,
+  type: "info",
+  title: "",
+};
 
 export default function Register() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reduce = useReduceMotion();
+  const { colors } = useTheme();
+  const styles = useStyles();
 
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
@@ -78,11 +132,54 @@ export default function Register() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const [alertState, setAlertState] = useState<AlertState>(ALERT_CLOSED);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const emailRef = useRef<AuthInputRef>(null);
+  const usernameRef = useRef<AuthInputRef>(null);
+  const passwordRef = useRef<AuthInputRef>(null);
+
   const press = useRef(new Animated.Value(1)).current;
   const shake = useRef(new Animated.Value(0)).current;
   const avatarScale = useRef(new Animated.Value(1)).current;
   const logoFloat = useFloat(reduce, 3200);
   const arrow = useFloat(reduce, 900);
+
+  // Strength colors ab theme se aate hain (theme change par update hote hain).
+  const strengthMetaList = useMemo(
+    () => [
+      { label: "Too short", color: colors.border },
+      { label: "Weak", color: colors.error },
+      { label: "Okay", color: colors.warning },
+      { label: "Good", color: colors.success },
+      { label: "Strong", color: colors.success },
+    ],
+    [colors],
+  );
+
+  const showAlert = useCallback(
+    (
+      type: AlertType,
+      title: string,
+      message?: string,
+      buttons?: AlertButton[],
+      dismissible = true,
+    ) => {
+      setAlertState({
+        visible: true,
+        type,
+        title,
+        message,
+        buttons,
+        dismissible,
+      });
+    },
+    [],
+  );
+
+  const closeAlert = useCallback(() => {
+    setAlertState((prev) => ({ ...prev, visible: false }));
+  }, []);
 
   const pressTo = useCallback(
     (v: number) =>
@@ -121,9 +218,10 @@ export default function Register() {
   const pickFromGallery = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert(
+      showAlert(
+        "warning",
         "Permission needed",
-        "Photo gallery access allow karo taaki profile photo choose kar sako.",
+        "Profile photo choose karne ke liye gallery access allow karo.",
       );
       return;
     }
@@ -136,14 +234,15 @@ export default function Register() {
     if (!res.canceled && res.assets?.length) {
       setAvatar(res.assets[0].uri);
     }
-  }, []);
+  }, [showAlert]);
 
   const pickFromCamera = useCallback(async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert(
+      showAlert(
+        "warning",
         "Permission needed",
-        "Camera access allow karo taaki photo click kar sako.",
+        "Photo click karne ke liye camera access allow karo.",
       );
       return;
     }
@@ -155,27 +254,13 @@ export default function Register() {
     if (!res.canceled && res.assets?.length) {
       setAvatar(res.assets[0].uri);
     }
-  }, []);
+  }, [showAlert]);
 
-  const onAvatarPress = useCallback(() => {
-    const options: {
-      text: string;
-      onPress?: () => void;
-      style?: "cancel" | "destructive" | "default";
-    }[] = [
-      { text: "Choose from gallery", onPress: pickFromGallery },
-      { text: "Take a photo", onPress: pickFromCamera },
-    ];
-    if (avatar) {
-      options.push({
-        text: "Remove photo",
-        style: "destructive",
-        onPress: () => setAvatar(null),
-      });
-    }
-    options.push({ text: "Cancel", style: "cancel" });
-    Alert.alert("Profile photo", "Apni profile photo select karo", options);
-  }, [avatar, pickFromGallery, pickFromCamera]);
+  // Sheet band hone ke baad picker kholo, warna iOS par picker open nahi hota.
+  const runAfterSheetClose = useCallback((fn: () => void) => {
+    setSheetOpen(false);
+    setTimeout(fn, 320);
+  }, []);
 
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
@@ -185,44 +270,59 @@ export default function Register() {
     username:
       username.trim().length < 3
         ? "Min 3 characters"
-        : /\s/.test(username)
+        : /\s/.test(username.trim())
           ? "No spaces allowed"
           : "",
     password: password.length < 8 ? "Min 8 characters" : "",
   };
   const isValid = !Object.values(errors).some(Boolean);
 
+  const resetForm = useCallback(() => {
+    setFullName("");
+    setEmail("");
+    setUsername("");
+    setPassword("");
+    setAvatar(null);
+    setSubmitted(false);
+  }, []);
+
   const onRegister = async () => {
+    if (loading) return;
     setSubmitted(true);
     if (!isValid) {
       shakeForm();
       return;
     }
-    if (loading) return;
+
     try {
       setLoading(true);
-
-      const form = new FormData();
-      form.append("fullName", fullName.trim());
-      form.append("email", email.trim());
-      form.append("username", username.trim());
-      form.append("password", password);
-      if (avatar) {
-        const ext = avatar.split(".").pop()?.toLowerCase() || "jpg";
-        form.append("avatar", {
-          uri: avatar,
-          name: `avatar.${ext}`,
-          type: `image/${ext === "jpg" ? "jpeg" : ext}`,
-        } as any);
-      }
-
-      console.log("Register attempt", {
+      await authApi.register({
         fullName,
         email,
         username,
-        hasAvatar: !!avatar,
+        password,
+        avatar: avatar ?? undefined,
       });
-      await new Promise((r) => setTimeout(r, 1200));
+
+      // Register ho gaya: saare inputs, photo aur errors saaf.
+      resetForm();
+
+      showAlert(
+        "success",
+        "Account created!",
+        "Aapka account ban gaya hai. Ab login karke chat start karo.",
+        [
+          {
+            text: "Go to Login",
+            variant: "primary",
+            onPress: () => router.replace(AFTER_REGISTER_ROUTE as any),
+          },
+        ],
+        false, // bahar tap / back se band nahi hoga
+      );
+    } catch (error: any) {
+      shakeForm();
+      showAlert("error", "Registration failed", getErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -232,7 +332,19 @@ export default function Register() {
     console.log("Google sign in");
   };
 
+  const focusEmail = useCallback(() => emailRef.current?.focus(), []);
+  const focusUsername = useCallback(() => usernameRef.current?.focus(), []);
+  const focusPassword = useCallback(() => passwordRef.current?.focus(), []);
+
+  const onRegisterRef = useRef(onRegister);
+  onRegisterRef.current = onRegister;
+  const submitFromKeyboard = useCallback(() => {
+    onRegisterRef.current();
+  }, []);
+
   if (!fontsLoaded) return null;
+
+  const strengthMeta = strengthMetaList[strength];
 
   return (
     <LinearGradient
@@ -248,7 +360,7 @@ export default function Register() {
 
       <SafeAreaView edges={["top"]} style={styles.safe}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.flex}
         >
           <Reveal reduce={reduce} delay={100} from={16} style={styles.hero}>
@@ -269,23 +381,23 @@ export default function Register() {
             >
               <View style={styles.logoRing} />
               <LinearGradient
-                colors={[colors.primary, palette.gradientEnd]}
+                colors={[colors.primary, colors.gradientEnd]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.logoBox}
               >
                 <Ionicons
                   name="chatbubble-ellipses"
-                  size={20}
-                  color={palette.white}
+                  size={19}
+                  color={colors.white}
                 />
               </LinearGradient>
             </Animated.View>
 
-            <Text style={styles.title} accessibilityRole="header">
+            <Text style={[styles.title]} accessibilityRole="header">
               Create your account
             </Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.subtitle]}>
               Join Chatty and start connecting
             </Text>
           </Reveal>
@@ -300,15 +412,17 @@ export default function Register() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               bounces={false}
+              overScrollMode="never"
             >
               <View style={styles.grabber} />
 
               <Reveal reduce={reduce} delay={280} from={14}>
                 <View style={styles.avatarSection}>
                   <Pressable
-                    onPress={onAvatarPress}
+                    onPress={() => setSheetOpen(true)}
                     onPressIn={() => avatarPressTo(0.95)}
                     onPressOut={() => avatarPressTo(1)}
+                    disabled={loading}
                     accessibilityRole="button"
                     accessibilityLabel={
                       avatar ? "Change profile photo" : "Add profile photo"
@@ -334,117 +448,131 @@ export default function Register() {
                         ) : (
                           <Ionicons
                             name="person"
-                            size={42}
+                            size={40}
                             color={colors.primary}
                           />
                         )}
                       </View>
 
                       <LinearGradient
-                        colors={[colors.primary, palette.gradientEnd]}
+                        colors={[colors.primary, colors.gradientEnd]}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
                         style={styles.avatarBadge}
                       >
                         <Ionicons
                           name={avatar ? "pencil" : "camera"}
-                          size={15}
-                          color={palette.white}
+                          size={12}
+                          color={colors.white}
                         />
                       </LinearGradient>
                     </Animated.View>
                   </Pressable>
 
-                  <Text style={styles.avatarLabel}>
+                  <Text style={[styles.avatarLabel]}>
                     {avatar ? "Tap to change photo" : "Add profile photo"}
                   </Text>
                 </View>
               </Reveal>
 
               <Animated.View style={{ transform: [{ translateX: shake }] }}>
-                <Reveal reduce={reduce} delay={340} from={14}>
-                  <AuthInput
-                    label="Full Name"
-                    placeholder="John Doe"
-                    leftIcon="person-outline"
-                    value={fullName}
-                    onChangeText={setFullName}
-                    autoCapitalize="words"
-                    valid={!!fullName && !errors.fullName}
-                    error={submitted ? errors.fullName : ""}
-                  />
-                </Reveal>
-                <Reveal reduce={reduce} delay={400} from={14}>
-                  <AuthInput
-                    label="Email"
-                    placeholder="name@example.com"
-                    leftIcon="mail-outline"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    valid={!!email && !errors.email}
-                    error={submitted ? errors.email : ""}
-                  />
-                </Reveal>
-                <Reveal reduce={reduce} delay={460} from={14}>
-                  <AuthInput
-                    label="Username"
-                    placeholder="johndoe"
-                    leftIcon="at-outline"
-                    value={username}
-                    onChangeText={setUsername}
-                    valid={!!username && !errors.username}
-                    error={submitted ? errors.username : ""}
-                  />
-                </Reveal>
-                <Reveal reduce={reduce} delay={520} from={14}>
-                  <AuthInput
-                    label="Password"
-                    placeholder="Create a password"
-                    leftIcon="lock-closed-outline"
-                    value={password}
-                    onChangeText={setPassword}
-                    isPassword
-                    error={submitted ? errors.password : ""}
-                  />
-                </Reveal>
+                <AuthInput
+                  label="Full Name"
+                  placeholder="John Doe"
+                  leftIcon="person-outline"
+                  value={fullName}
+                  onChangeText={setFullName}
+                  autoCapitalize="words"
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={focusEmail}
+                  editable={!loading}
+                  valid={!!fullName && !errors.fullName}
+                  error={submitted ? errors.fullName : ""}
+                />
+                <AuthInput
+                  ref={emailRef}
+                  label="Email"
+                  placeholder="name@example.com"
+                  leftIcon="mail-outline"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={focusUsername}
+                  editable={!loading}
+                  valid={!!email && !errors.email}
+                  error={submitted ? errors.email : ""}
+                />
+                <AuthInput
+                  ref={usernameRef}
+                  label="Username"
+                  placeholder="johndoe"
+                  leftIcon="at-outline"
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={focusPassword}
+                  editable={!loading}
+                  valid={!!username && !errors.username}
+                  error={submitted ? errors.username : ""}
+                />
+                <AuthInput
+                  ref={passwordRef}
+                  label="Password"
+                  placeholder="Create a password"
+                  leftIcon="lock-closed-outline"
+                  value={password}
+                  onChangeText={setPassword}
+                  isPassword
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={submitFromKeyboard}
+                  editable={!loading}
+                  error={submitted ? errors.password : ""}
+                />
               </Animated.View>
 
-              {password.length > 0 && (
-                <View style={styles.strengthWrap}>
-                  <View style={styles.strengthBars}>
-                    {[1, 2, 3, 4].map((i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.strengthBar,
-                          {
-                            backgroundColor:
-                              i <= strength
-                                ? STRENGTH_META[strength].color
-                                : "#E5E7EB",
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                  <Text
-                    style={[
-                      styles.strengthLabel,
-                      { color: STRENGTH_META[strength].color },
-                    ]}
-                  >
-                    {STRENGTH_META[strength].label}
-                  </Text>
+              <View
+                style={[
+                  styles.strengthWrap,
+                  { minHeight: 18, opacity: password.length > 0 ? 1 : 0 },
+                ]}
+                pointerEvents="none"
+              >
+                <View style={styles.strengthBars}>
+                  {[1, 2, 3, 4].map((i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.strengthBar,
+                        {
+                          backgroundColor:
+                            i <= strength ? strengthMeta.color : colors.border,
+                        },
+                      ]}
+                    />
+                  ))}
                 </View>
-              )}
+                <Text
+                  style={[styles.strengthLabel, { color: strengthMeta.color }]}
+                >
+                  {strengthMeta.label}
+                </Text>
+              </View>
 
               <Reveal
                 reduce={reduce}
                 delay={600}
                 from={16}
                 scaleFrom={0.97}
-                style={{ marginTop: 8 }}
+                style={REGISTER_BTN_WRAP}
               >
                 <Pressable
                   onPress={onRegister}
@@ -457,16 +585,16 @@ export default function Register() {
                 >
                   <Animated.View style={{ transform: [{ scale: press }] }}>
                     <LinearGradient
-                      colors={[colors.primary, palette.gradientEnd]}
+                      colors={[colors.primary, colors.gradientEnd]}
                       start={{ x: 0, y: 0.5 }}
                       end={{ x: 1, y: 0.5 }}
-                      style={styles.primaryBtn}
+                      style={[styles.primaryBtn]}
                     >
                       {loading ? (
-                        <ActivityIndicator color={palette.white} />
+                        <ActivityIndicator color={colors.white} />
                       ) : (
                         <>
-                          <Text style={styles.primaryText}>Register</Text>
+                          <Text style={[styles.primaryText]}>Register</Text>
                           <Animated.View
                             style={{
                               transform: [
@@ -481,8 +609,8 @@ export default function Register() {
                           >
                             <Ionicons
                               name="arrow-forward"
-                              size={17}
-                              color={palette.white}
+                              size={16}
+                              color={colors.white}
                             />
                           </Animated.View>
                           <ShimmerSweep reduce={reduce} />
@@ -496,7 +624,7 @@ export default function Register() {
               <Reveal reduce={reduce} delay={680} from={10}>
                 <View style={styles.dividerRow}>
                   <View style={styles.dividerLine} />
-                  <Text style={styles.or}>or continue with</Text>
+                  <Text style={[styles.or]}>or continue with</Text>
                   <View style={styles.dividerLine} />
                 </View>
               </Reveal>
@@ -504,6 +632,7 @@ export default function Register() {
               <Reveal reduce={reduce} delay={740} from={12}>
                 <Pressable
                   onPress={onGoogle}
+                  disabled={loading}
                   accessibilityRole="button"
                   accessibilityLabel="Continue with Google"
                   style={({ pressed }) => [
@@ -511,23 +640,24 @@ export default function Register() {
                     pressed && { opacity: 0.75 },
                   ]}
                 >
-                  <GoogleIcon size={20} />
-                  <Text style={styles.socialText}>Continue with Google</Text>
+                  <GoogleIcon size={18} />
+                  <Text style={[styles.socialText]}>Continue with Google</Text>
                 </Pressable>
               </Reveal>
 
               <Reveal reduce={reduce} delay={800} from={8}>
                 <View style={styles.footer}>
-                  <Text style={styles.footerText}>
+                  <Text style={[styles.footerText]}>
                     Already have an account?{" "}
                   </Text>
                   <Pressable
                     onPress={() => router.replace("/auth/login")}
                     hitSlop={8}
+                    disabled={loading}
                     accessibilityRole="button"
                     accessibilityLabel="Log in"
                   >
-                    <Text style={styles.footerLink}>Login</Text>
+                    <Text style={[styles.footerLink]}>Login</Text>
                   </Pressable>
                 </View>
               </Reveal>
@@ -535,6 +665,28 @@ export default function Register() {
           </Reveal>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <PhotoPickerSheet
+        visible={sheetOpen}
+        hasPhoto={!!avatar}
+        onClose={() => setSheetOpen(false)}
+        onGallery={() => runAfterSheetClose(pickFromGallery)}
+        onCamera={() => runAfterSheetClose(pickFromCamera)}
+        onRemove={() => {
+          setSheetOpen(false);
+          setAvatar(null);
+        }}
+      />
+
+      <AppAlert
+        visible={alertState.visible}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        dismissible={alertState.dismissible}
+        onClose={closeAlert}
+      />
     </LinearGradient>
   );
 }

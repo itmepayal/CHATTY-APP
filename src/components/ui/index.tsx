@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   View,
   Text as RNText,
@@ -18,6 +24,7 @@ import {
   NativeScrollEvent,
   StyleProp,
   TextStyle,
+  ViewStyle,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,10 +32,11 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { colors } from "../../constants/theme";
+import { makeUseStyles, useTheme } from "../../theme/theme";
+import { alpha } from "../../theme/theme";
+import { AppColors, colors as brandColors } from "../../theme/themes";
 
-export { colors };
-
+export const colors = brandColors;
 export const BG = "#FFFFFF";
 export const SURFACE = "#F3F4F8";
 export const TEXT = "#0F172A";
@@ -62,6 +70,465 @@ export const radius = {
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 export type Tint = [string, string];
+
+const readableOn = (hex: string): string => {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 150 ? "#0F172A" : "#FFFFFF";
+};
+
+const buildPalette = (c: AppColors) => ({
+  bg: c.background,
+  card: c.card,
+  surface: alpha(c.text, 0.06),
+  pressed: alpha(c.text, 0.04),
+  line: c.hairline,
+  text: c.ink,
+  text2: c.subtle,
+  muted: c.muted,
+  online: c.online,
+  danger: c.error,
+  dangerBg: alpha(c.error, 0.14),
+  primary: c.primary,
+  onPrimary: readableOn(c.primary),
+  onDanger: readableOn(c.error),
+  backdrop: "rgba(0,0,0,0.5)",
+  isDarkBg: readableOn(c.background) === "#FFFFFF",
+});
+
+export type UiPalette = ReturnType<typeof buildPalette>;
+
+export function usePalette(): UiPalette {
+  const { colors: c, name } = useTheme();
+  return useMemo(() => buildPalette(c), [name]);
+}
+
+const useStyles = makeUseStyles((t) => {
+  const p = buildPalette(t.colors);
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: p.bg },
+
+    top: {
+      backgroundColor: p.bg,
+      paddingBottom: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: "transparent",
+    },
+    topScrolled: { borderBottomColor: p.line },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: space.screen,
+      paddingTop: 8,
+      paddingBottom: 12,
+    },
+    headerText: { flex: 1 },
+    title: {
+      fontFamily: fonts.bold,
+      fontSize: 22,
+      lineHeight: 30,
+      color: p.text,
+      letterSpacing: -0.3,
+      includeFontPadding: false,
+    },
+    subtitle: {
+      fontFamily: fonts.regular,
+      fontSize: 11.5,
+      lineHeight: 16,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+    headerActions: { flexDirection: "row", gap: space.gap },
+    iconBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: radius.control,
+      backgroundColor: p.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    iconBtnPressed: { backgroundColor: p.line },
+    bellDot: {
+      position: "absolute",
+      top: 9,
+      right: 10,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: p.danger,
+      borderWidth: 1.5,
+      borderColor: p.bg,
+    },
+
+    search: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: space.screen,
+      height: 42,
+      paddingHorizontal: 12,
+      borderRadius: radius.control,
+      backgroundColor: p.surface,
+      borderWidth: 1.5,
+      borderColor: "transparent",
+      gap: space.gap,
+    },
+    searchFocused: { backgroundColor: p.bg, borderColor: p.primary },
+    searchInput: {
+      flex: 1,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      color: p.text,
+      paddingVertical: 0,
+      includeFontPadding: false,
+    },
+
+    tabsScroll: { flexGrow: 0 },
+    tabs: {
+      gap: space.gap,
+      paddingHorizontal: space.screen,
+      paddingTop: 12,
+    },
+    tab: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 14,
+      height: 32,
+      borderRadius: radius.pill,
+      backgroundColor: p.surface,
+    },
+    tabOn: { backgroundColor: p.primary },
+    tabText: {
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      lineHeight: 17,
+      color: p.text2,
+      includeFontPadding: false,
+    },
+    tabTextOn: { color: p.onPrimary, fontFamily: fonts.semiBold },
+    tabCount: {
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      paddingHorizontal: 5,
+      marginLeft: 6,
+      backgroundColor: p.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    tabCountDanger: { backgroundColor: p.danger },
+    tabCountOn: { backgroundColor: p.onPrimary },
+    tabCountText: {
+      fontFamily: fonts.bold,
+      fontSize: 10,
+      lineHeight: 14,
+      color: p.onPrimary,
+      includeFontPadding: false,
+    },
+
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 7,
+      paddingHorizontal: space.screen,
+      paddingTop: 16,
+      paddingBottom: 6,
+    },
+    sectionTitle: {
+      fontFamily: fonts.semiBold,
+      fontSize: 10,
+      lineHeight: 14,
+      color: p.muted,
+      letterSpacing: 0.9,
+      textTransform: "uppercase",
+      includeFontPadding: false,
+    },
+    sectionCount: {
+      fontFamily: fonts.medium,
+      fontSize: 10,
+      lineHeight: 14,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+
+    strip: { paddingTop: 16, paddingLeft: space.screen },
+    stripHeading: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingRight: space.screen,
+    },
+    stripRow: { paddingTop: 10, paddingRight: space.screen, gap: 14 },
+    stripItem: { alignItems: "center", width: 54 },
+    stripName: {
+      fontFamily: fonts.medium,
+      fontSize: 10.5,
+      lineHeight: 15,
+      color: p.text2,
+      marginTop: 5,
+      includeFontPadding: false,
+    },
+
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: space.screen,
+      paddingVertical: space.row,
+    },
+    rowPressed: { backgroundColor: p.pressed },
+    rowBody: { flex: 1, minWidth: 0, marginLeft: 12 },
+    rowTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    rowBottom: { flexDirection: "row", alignItems: "center", marginTop: 2 },
+    name: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 14,
+      lineHeight: 20,
+      color: p.text,
+      marginRight: 8,
+      includeFontPadding: false,
+    },
+    nameStrong: { fontFamily: fonts.semiBold },
+    nameDanger: { color: p.danger },
+    time: {
+      fontFamily: fonts.regular,
+      fontSize: 10.5,
+      lineHeight: 15,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+    timeStrong: { fontFamily: fonts.semiBold, color: p.primary },
+    preview: {
+      flex: 1,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 17,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+    previewStrong: { fontFamily: fonts.medium, color: p.text2 },
+    previewAccent: { fontFamily: fonts.medium, color: p.primary },
+    meta: { flexDirection: "row", alignItems: "center", marginLeft: 8, gap: 6 },
+    separator: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: p.line,
+      marginLeft: 76,
+      marginRight: space.screen,
+    },
+    captionLine: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      marginTop: 2,
+    },
+    caption: {
+      fontFamily: fonts.regular,
+      fontSize: 10.5,
+      lineHeight: 15,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+    captionOnline: { color: p.online },
+
+    avatar: { alignItems: "center", justifyContent: "center" },
+    avatarText: { fontFamily: fonts.bold, includeFontPadding: false },
+    onlineDot: {
+      position: "absolute",
+      right: 0,
+      bottom: 0,
+      width: 13,
+      height: 13,
+      borderRadius: 7,
+      backgroundColor: p.online,
+      borderWidth: 2.5,
+      borderColor: p.bg,
+    },
+
+    badge: {
+      minWidth: 19,
+      height: 19,
+      borderRadius: 10,
+      paddingHorizontal: 5,
+      backgroundColor: p.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    badgeMuted: { backgroundColor: p.muted },
+    badgeText: {
+      fontFamily: fonts.bold,
+      fontSize: 10,
+      lineHeight: 14,
+      color: p.onPrimary,
+      includeFontPadding: false,
+    },
+
+    empty: { alignItems: "center", paddingTop: 60, paddingHorizontal: 40 },
+    emptyIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 20,
+      backgroundColor: p.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    emptyTitle: {
+      fontFamily: fonts.semiBold,
+      fontSize: 14.5,
+      lineHeight: 21,
+      color: p.text,
+      marginTop: 14,
+      textAlign: "center",
+      includeFontPadding: false,
+    },
+    emptySub: {
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 18,
+      color: p.muted,
+      textAlign: "center",
+      marginTop: 4,
+      includeFontPadding: false,
+    },
+
+    fab: {
+      position: "absolute",
+      right: space.screen,
+      bottom: 20,
+      width: 52,
+      height: 52,
+      borderRadius: radius.fab,
+      backgroundColor: p.primary,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: p.primary,
+      shadowOpacity: 0.3,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 7,
+    },
+
+    button: {
+      height: 48,
+      borderRadius: radius.control,
+      backgroundColor: p.primary,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingHorizontal: 20,
+    },
+    buttonText: {
+      fontFamily: fonts.semiBold,
+      fontSize: 13,
+      lineHeight: 19,
+      color: p.onPrimary,
+      includeFontPadding: false,
+    },
+    fieldLabel: {
+      fontFamily: fonts.semiBold,
+      fontSize: 10,
+      lineHeight: 14,
+      color: p.text2,
+      letterSpacing: 0.9,
+      textTransform: "uppercase",
+      marginBottom: 8,
+      includeFontPadding: false,
+    },
+    field: {
+      minHeight: 46,
+      borderWidth: 1,
+      borderColor: p.line,
+      borderRadius: radius.control,
+      paddingHorizontal: 12,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 18,
+      color: p.text,
+      backgroundColor: p.surface,
+      includeFontPadding: false,
+    },
+
+    backdrop: {
+      ...StyleSheet.absoluteFill,
+      backgroundColor: p.backdrop,
+    },
+    sheetRoot: { flex: 1, justifyContent: "flex-end" },
+    sheet: {
+      backgroundColor: p.card,
+      borderTopLeftRadius: radius.sheet,
+      borderTopRightRadius: radius.sheet,
+      paddingHorizontal: 8,
+      paddingTop: 10,
+    },
+    grabber: {
+      alignSelf: "center",
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: p.line,
+      marginBottom: 12,
+    },
+    sheetHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+    },
+    sheetHeaderText: { flex: 1, marginLeft: 12 },
+    sheetName: {
+      fontFamily: fonts.semiBold,
+      fontSize: 14,
+      lineHeight: 20,
+      color: p.text,
+      includeFontPadding: false,
+    },
+    sheetSub: {
+      fontFamily: fonts.regular,
+      fontSize: 11,
+      lineHeight: 16,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+    sheetDivider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: p.line,
+      marginVertical: 10,
+      marginHorizontal: 12,
+    },
+    action: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: radius.control,
+    },
+    actionIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: radius.pill,
+      backgroundColor: p.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    actionIconDanger: { backgroundColor: p.dangerBg },
+    actionText: {
+      fontFamily: fonts.medium,
+      fontSize: 13.5,
+      lineHeight: 20,
+      color: p.text,
+      marginLeft: 12,
+      includeFontPadding: false,
+    },
+    actionTextDanger: { color: p.danger },
+  });
+});
 
 export const Text = (props: TextProps) => (
   <RNText maxFontSizeMultiplier={1.1} {...props} />
@@ -98,9 +565,11 @@ export function useScrolled() {
 }
 
 export function Screen({ children }: { children: React.ReactNode }) {
+  const s = useStyles();
+  const p = usePalette();
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <StatusBar style="dark" />
+      <StatusBar style={p.isDarkBg ? "light" : "dark"} />
       {children}
     </SafeAreaView>
   );
@@ -119,6 +588,7 @@ export function ScreenTop({
   scrolled: boolean;
   children?: React.ReactNode;
 }) {
+  const s = useStyles();
   return (
     <View style={[s.top, scrolled && s.topScrolled]}>
       <View style={s.header}>
@@ -137,7 +607,7 @@ export function HeaderButton({
   icon,
   label,
   onPress,
-  color = TEXT,
+  color,
   dot,
 }: {
   icon: IconName;
@@ -146,6 +616,8 @@ export function HeaderButton({
   color?: string;
   dot?: boolean;
 }) {
+  const s = useStyles();
+  const p = usePalette();
   return (
     <Pressable
       onPress={onPress}
@@ -153,7 +625,7 @@ export function HeaderButton({
       accessibilityLabel={label}
       style={({ pressed }) => [s.iconBtn, pressed && s.iconBtnPressed]}
     >
-      <Ionicons name={icon} size={19} color={color} />
+      <Ionicons name={icon} size={19} color={color ?? p.text} />
       {dot && <View style={s.bellDot} />}
     </Pressable>
   );
@@ -170,21 +642,19 @@ export function SearchBar({
   placeholder: string;
   label: string;
 }) {
+  const s = useStyles();
+  const p = usePalette();
   const [focused, setFocused] = useState(false);
   return (
     <View style={[s.search, focused && s.searchFocused]}>
-      <Ionicons
-        name="search"
-        size={17}
-        color={focused ? colors.primary : MUTED}
-      />
+      <Ionicons name="search" size={17} color={focused ? p.primary : p.muted} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         placeholder={placeholder}
-        placeholderTextColor={MUTED}
+        placeholderTextColor={p.muted}
         style={s.searchInput}
         returnKeyType="search"
         autoCorrect={false}
@@ -197,7 +667,7 @@ export function SearchBar({
           accessibilityRole="button"
           accessibilityLabel="Clear search"
         >
-          <Ionicons name="close-circle" size={17} color={MUTED} />
+          <Ionicons name="close-circle" size={17} color={p.muted} />
         </Pressable>
       )}
     </View>
@@ -217,6 +687,8 @@ export function TabPills<T extends string>({
   badges?: Partial<Record<T, number>>;
   badgeTone?: "primary" | "danger";
 }) {
+  const s = useStyles();
+  const p = usePalette();
   return (
     <ScrollView
       horizontal
@@ -227,6 +699,7 @@ export function TabPills<T extends string>({
       {tabs.map((t) => {
         const on = t === active;
         const count = badges?.[t] ?? 0;
+        const danger = badgeTone === "danger";
         return (
           <Pressable
             key={t}
@@ -240,11 +713,17 @@ export function TabPills<T extends string>({
               <View
                 style={[
                   s.tabCount,
-                  badgeTone === "danger" && s.tabCountDanger,
+                  danger && s.tabCountDanger,
                   on && s.tabCountOn,
                 ]}
               >
-                <Text style={[s.tabCountText, on && { color: colors.primary }]}>
+                <Text
+                  style={[
+                    s.tabCountText,
+                    danger && { color: p.onDanger },
+                    on && { color: p.primary },
+                  ]}
+                >
                   {count}
                 </Text>
               </View>
@@ -265,6 +744,7 @@ export function SectionHeader({
   title: string;
   count?: number;
 }) {
+  const s = useStyles();
   return (
     <View style={s.sectionHeader}>
       <Text style={s.sectionTitle}>{title}</Text>
@@ -273,7 +753,10 @@ export function SectionHeader({
   );
 }
 
-export const Separator = () => <View style={s.separator} />;
+export const Separator = () => {
+  const s = useStyles();
+  return <View style={s.separator} />;
+};
 
 export function StripSection({
   title,
@@ -284,6 +767,7 @@ export function StripSection({
   right?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const s = useStyles();
   return (
     <View style={s.strip}>
       <View style={s.stripHeading}>
@@ -312,6 +796,7 @@ export function StripItem({
   onPress: () => void;
   accessibilityLabel: string;
 }) {
+  const s = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -340,6 +825,7 @@ export function Avatar({
   size?: number;
   online?: boolean;
 }) {
+  const s = useStyles();
   return (
     <View>
       <View
@@ -459,6 +945,7 @@ export function ListRow({
   accessibilityHint?: string;
   children?: React.ReactNode;
 }) {
+  const s = useStyles();
   return (
     <FadeIn index={index} reduceMotion={reduceMotion}>
       <Pressable
@@ -504,6 +991,7 @@ export function PreviewText({
   strong?: boolean;
   accent?: boolean;
 }) {
+  const s = useStyles();
   const style: StyleProp<TextStyle> = [
     s.preview,
     strong && s.previewStrong,
@@ -519,10 +1007,12 @@ export function PreviewText({
 export const rowIconStyle = { marginRight: 4 };
 
 export function RowMeta({ children }: { children: React.ReactNode }) {
+  const s = useStyles();
   return <View style={s.meta}>{children}</View>;
 }
 
 export function Badge({ count, muted }: { count: number; muted?: boolean }) {
+  const s = useStyles();
   return (
     <View style={[s.badge, muted && s.badgeMuted]}>
       <Text style={s.badgeText}>{count > 99 ? "99+" : count}</Text>
@@ -531,6 +1021,7 @@ export function Badge({ count, muted }: { count: number; muted?: boolean }) {
 }
 
 export function CaptionLine({ children }: { children: React.ReactNode }) {
+  const s = useStyles();
   return <View style={s.captionLine}>{children}</View>;
 }
 
@@ -541,8 +1032,9 @@ export function Caption({
   children: React.ReactNode;
   tone?: "online";
 }) {
+  const s = useStyles();
   return (
-    <Text style={[s.caption, tone === "online" && { color: ONLINE }]}>
+    <Text style={[s.caption, tone === "online" && s.captionOnline]}>
       {children}
     </Text>
   );
@@ -559,10 +1051,12 @@ export function EmptyState({
   subtitle: string;
   action?: React.ReactNode;
 }) {
+  const s = useStyles();
+  const p = usePalette();
   return (
     <View style={s.empty}>
       <View style={s.emptyIcon}>
-        <Ionicons name={icon} size={26} color={colors.primary} />
+        <Ionicons name={icon} size={26} color={p.primary} />
       </View>
       <Text style={s.emptyTitle}>{title}</Text>
       <Text style={s.emptySub}>{subtitle}</Text>
@@ -580,6 +1074,8 @@ export function Fab({
   label: string;
   onPress: () => void;
 }) {
+  const s = useStyles();
+  const p = usePalette();
   return (
     <Pressable
       onPress={onPress}
@@ -590,7 +1086,7 @@ export function Fab({
         pressed && { transform: [{ scale: 0.95 }] },
       ]}
     >
-      <Ionicons name={icon} size={22} color="#fff" />
+      <Ionicons name={icon} size={22} color={p.onPrimary} />
     </Pressable>
   );
 }
@@ -604,15 +1100,17 @@ export function PrimaryButton({
   label: string;
   icon?: IconName;
   onPress: () => void;
-  style?: StyleProp<import("react-native").ViewStyle>;
+  style?: StyleProp<ViewStyle>;
 }) {
+  const s = useStyles();
+  const p = usePalette();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       style={({ pressed }) => [s.button, pressed && { opacity: 0.85 }, style]}
     >
-      {icon && <Ionicons name={icon} size={18} color="#fff" />}
+      {icon && <Ionicons name={icon} size={18} color={p.onPrimary} />}
       <Text style={s.buttonText}>{label}</Text>
     </Pressable>
   );
@@ -625,13 +1123,16 @@ export function FieldLabel({
   children: string;
   style?: StyleProp<TextStyle>;
 }) {
+  const s = useStyles();
   return <Text style={[s.fieldLabel, style]}>{children}</Text>;
 }
 
 export function Field(props: TextInputProps) {
+  const s = useStyles();
+  const p = usePalette();
   return (
     <TextInput
-      placeholderTextColor={MUTED}
+      placeholderTextColor={p.muted}
       {...props}
       style={[s.field, props.style]}
     />
@@ -647,6 +1148,7 @@ export function BottomSheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const s = useStyles();
   const insets = useSafeAreaInsets();
   return (
     <Modal
@@ -689,6 +1191,7 @@ export function ActionSheet({
   subtitle?: string;
   children?: React.ReactNode;
 }) {
+  const s = useStyles();
   return (
     <BottomSheet visible={visible} onClose={onClose}>
       {!!title && (
@@ -725,6 +1228,8 @@ export function SheetAction({
   onPress: () => void;
   danger?: boolean;
 }) {
+  const s = useStyles();
+  const p = usePalette();
   return (
     <Pressable
       onPress={onPress}
@@ -732,428 +1237,9 @@ export function SheetAction({
       style={({ pressed }) => [s.action, pressed && s.rowPressed]}
     >
       <View style={[s.actionIcon, danger && s.actionIconDanger]}>
-        <Ionicons name={icon} size={17} color={danger ? DANGER : TEXT_2} />
+        <Ionicons name={icon} size={17} color={danger ? p.danger : p.text2} />
       </View>
-      <Text style={[s.actionText, danger && { color: DANGER }]}>{label}</Text>
+      <Text style={[s.actionText, danger && s.actionTextDanger]}>{label}</Text>
     </Pressable>
   );
 }
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-
-  top: {
-    backgroundColor: BG,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "transparent",
-  },
-  topScrolled: { borderBottomColor: LINE },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: space.screen,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  headerText: { flex: 1 },
-  title: {
-    fontFamily: fonts.bold,
-    fontSize: 22,
-    lineHeight: 30,
-    color: TEXT,
-    letterSpacing: -0.3,
-    includeFontPadding: false,
-  },
-  subtitle: {
-    fontFamily: fonts.regular,
-    fontSize: 11.5,
-    lineHeight: 16,
-    color: MUTED,
-    includeFontPadding: false,
-  },
-  headerActions: { flexDirection: "row", gap: space.gap },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.control,
-    backgroundColor: SURFACE,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconBtnPressed: { backgroundColor: LINE },
-  bellDot: {
-    position: "absolute",
-    top: 9,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: DANGER,
-    borderWidth: 1.5,
-    borderColor: SURFACE,
-  },
-
-  search: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: space.screen,
-    height: 42,
-    paddingHorizontal: 12,
-    borderRadius: radius.control,
-    backgroundColor: SURFACE,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-    gap: space.gap,
-  },
-  searchFocused: { backgroundColor: BG, borderColor: colors.primary },
-  searchInput: {
-    flex: 1,
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    color: TEXT,
-    paddingVertical: 0,
-    includeFontPadding: false,
-  },
-
-  tabsScroll: { flexGrow: 0 },
-  tabs: {
-    gap: space.gap,
-    paddingHorizontal: space.screen,
-    paddingTop: 12,
-  },
-  tab: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 14,
-    height: 32,
-    borderRadius: radius.pill,
-    backgroundColor: SURFACE,
-  },
-  tabOn: { backgroundColor: colors.primary },
-  tabText: {
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    lineHeight: 17,
-    color: TEXT_2,
-    includeFontPadding: false,
-  },
-  tabTextOn: { color: "#fff", fontFamily: fonts.semiBold },
-  tabCount: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 5,
-    marginLeft: 6,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabCountDanger: { backgroundColor: DANGER },
-  tabCountOn: { backgroundColor: "#fff" },
-  tabCountText: {
-    fontFamily: fonts.bold,
-    fontSize: 10,
-    lineHeight: 14,
-    color: "#fff",
-    includeFontPadding: false,
-  },
-
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: space.screen,
-    paddingTop: 16,
-    paddingBottom: 6,
-  },
-  sectionTitle: {
-    fontFamily: fonts.semiBold,
-    fontSize: 10,
-    lineHeight: 14,
-    color: MUTED,
-    letterSpacing: 0.9,
-    textTransform: "uppercase",
-    includeFontPadding: false,
-  },
-  sectionCount: {
-    fontFamily: fonts.medium,
-    fontSize: 10,
-    lineHeight: 14,
-    color: MUTED,
-    includeFontPadding: false,
-  },
-
-  strip: { paddingTop: 16, paddingLeft: space.screen },
-  stripHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingRight: space.screen,
-  },
-  stripRow: { paddingTop: 10, paddingRight: space.screen, gap: 14 },
-  stripItem: { alignItems: "center", width: 54 },
-  stripName: {
-    fontFamily: fonts.medium,
-    fontSize: 10.5,
-    lineHeight: 15,
-    color: TEXT_2,
-    marginTop: 5,
-    includeFontPadding: false,
-  },
-
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: space.screen,
-    paddingVertical: space.row,
-  },
-  rowPressed: { backgroundColor: PRESSED },
-  rowBody: { flex: 1, minWidth: 0, marginLeft: 12 },
-  rowTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  rowBottom: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  name: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    lineHeight: 20,
-    color: TEXT,
-    marginRight: 8,
-    includeFontPadding: false,
-  },
-  nameStrong: { fontFamily: fonts.semiBold },
-  nameDanger: { color: DANGER },
-  time: {
-    fontFamily: fonts.regular,
-    fontSize: 10.5,
-    lineHeight: 15,
-    color: MUTED,
-    includeFontPadding: false,
-  },
-  timeStrong: { fontFamily: fonts.semiBold, color: colors.primary },
-  preview: {
-    flex: 1,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 17,
-    color: MUTED,
-    includeFontPadding: false,
-  },
-  previewStrong: { fontFamily: fonts.medium, color: TEXT_2 },
-  previewAccent: { fontFamily: fonts.medium, color: colors.primary },
-  meta: { flexDirection: "row", alignItems: "center", marginLeft: 8, gap: 6 },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: LINE,
-    marginLeft: 76,
-    marginRight: space.screen,
-  },
-  captionLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginTop: 2,
-  },
-  caption: {
-    fontFamily: fonts.regular,
-    fontSize: 10.5,
-    lineHeight: 15,
-    color: MUTED,
-    includeFontPadding: false,
-  },
-
-  avatar: { alignItems: "center", justifyContent: "center" },
-  avatarText: { fontFamily: fonts.bold, includeFontPadding: false },
-  onlineDot: {
-    position: "absolute",
-    right: 0,
-    bottom: 0,
-    width: 13,
-    height: 13,
-    borderRadius: 7,
-    backgroundColor: ONLINE,
-    borderWidth: 2.5,
-    borderColor: BG,
-  },
-
-  badge: {
-    minWidth: 19,
-    height: 19,
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeMuted: { backgroundColor: MUTED },
-  badgeText: {
-    fontFamily: fonts.bold,
-    fontSize: 10,
-    lineHeight: 14,
-    color: "#fff",
-    includeFontPadding: false,
-  },
-
-  empty: { alignItems: "center", paddingTop: 60, paddingHorizontal: 40 },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: SURFACE,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyTitle: {
-    fontFamily: fonts.semiBold,
-    fontSize: 14.5,
-    lineHeight: 21,
-    color: TEXT,
-    marginTop: 14,
-    textAlign: "center",
-    includeFontPadding: false,
-  },
-  emptySub: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: MUTED,
-    textAlign: "center",
-    marginTop: 4,
-    includeFontPadding: false,
-  },
-
-  fab: {
-    position: "absolute",
-    right: space.screen,
-    bottom: 20,
-    width: 52,
-    height: 52,
-    borderRadius: radius.fab,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 7,
-  },
-
-  button: {
-    height: 48,
-    borderRadius: radius.control,
-    backgroundColor: colors.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: 20,
-  },
-  buttonText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#fff",
-    includeFontPadding: false,
-  },
-  fieldLabel: {
-    fontFamily: fonts.semiBold,
-    fontSize: 10,
-    lineHeight: 14,
-    color: TEXT_2,
-    letterSpacing: 0.9,
-    textTransform: "uppercase",
-    marginBottom: 8,
-    includeFontPadding: false,
-  },
-  field: {
-    minHeight: 46,
-    borderWidth: 1,
-    borderColor: LINE,
-    borderRadius: radius.control,
-    paddingHorizontal: 12,
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    lineHeight: 18,
-    color: TEXT,
-    backgroundColor: SURFACE,
-    includeFontPadding: false,
-  },
-
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(15,23,42,0.45)",
-  },
-  sheetRoot: { flex: 1, justifyContent: "flex-end" },
-  sheet: {
-    backgroundColor: BG,
-    borderTopLeftRadius: radius.sheet,
-    borderTopRightRadius: radius.sheet,
-    paddingHorizontal: 8,
-    paddingTop: 10,
-  },
-  grabber: {
-    alignSelf: "center",
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: LINE,
-    marginBottom: 12,
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-  },
-  sheetHeaderText: { flex: 1, marginLeft: 12 },
-  sheetName: {
-    fontFamily: fonts.semiBold,
-    fontSize: 14,
-    lineHeight: 20,
-    color: TEXT,
-    includeFontPadding: false,
-  },
-  sheetSub: {
-    fontFamily: fonts.regular,
-    fontSize: 11,
-    lineHeight: 16,
-    color: MUTED,
-    includeFontPadding: false,
-  },
-  sheetDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: LINE,
-    marginVertical: 10,
-    marginHorizontal: 12,
-  },
-  action: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: radius.control,
-  },
-  actionIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.pill,
-    backgroundColor: SURFACE,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionIconDanger: { backgroundColor: "#FEE2E2" },
-  actionText: {
-    fontFamily: fonts.medium,
-    fontSize: 13.5,
-    lineHeight: 20,
-    color: TEXT,
-    marginLeft: 12,
-    includeFontPadding: false,
-  },
-});

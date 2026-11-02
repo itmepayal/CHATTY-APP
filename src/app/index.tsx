@@ -2,16 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Animated,
-  Easing,
   Image,
-  LayoutChangeEvent,
   Pressable,
   StatusBar,
-  StyleProp,
   StyleSheet,
   Text,
   View,
-  ViewStyle,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,9 +16,8 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { colors } from "../constants/theme";
-import { palette } from "../constants/theme";
-import { styles } from "../styles/main.styles";
+import { useTheme } from "../theme/theme";
+import { useStyles } from "../styles/main.styles";
 import {
   Reveal,
   ShimmerSweep,
@@ -44,6 +39,8 @@ const FEATURES: { icon: IconName; title: string; caption: string }[] = [
 export default function GetStarted() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useStyles();
   const [reduce, setReduce] = useState(false);
 
   const press = useRef(new Animated.Value(1)).current;
@@ -93,7 +90,7 @@ export default function GetStarted() {
         <Reveal reduce={reduce} style={styles.header} from={-12}>
           <View style={styles.brandRow}>
             <LinearGradient
-              colors={[colors.primary, palette.gradientEnd]}
+              colors={[colors.primary, colors.gradientEnd]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.logoBox}
@@ -101,7 +98,7 @@ export default function GetStarted() {
               <Ionicons
                 name="chatbubble-ellipses"
                 size={18}
-                color={palette.white}
+                color={colors.white}
               />
             </LinearGradient>
             <Text style={styles.brand} accessibilityRole="header">
@@ -110,7 +107,7 @@ export default function GetStarted() {
           </View>
 
           <View style={styles.secureBadge}>
-            <Ionicons name="lock-closed" size={11} color={palette.white} />
+            <Ionicons name="lock-closed" size={11} color={colors.white} />
             <Text style={styles.secureText}>Secure</Text>
           </View>
         </Reveal>
@@ -178,14 +175,20 @@ export default function GetStarted() {
                   />
                   <LinearGradient
                     pointerEvents="none"
-                    colors={["rgba(91,63,240,0.40)", "rgba(91,63,240,0)"]}
+                    colors={[
+                      colors.illustrationBg + "66",
+                      colors.illustrationBg + "00",
+                    ]}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 0.2 }}
                     style={StyleSheet.absoluteFill}
                   />
                   <LinearGradient
                     pointerEvents="none"
-                    colors={["rgba(91,63,240,0)", "rgba(91,63,240,0.40)"]}
+                    colors={[
+                      colors.illustrationBg + "00",
+                      colors.illustrationBg + "66",
+                    ]}
                     start={{ x: 0.5, y: 0.8 }}
                     end={{ x: 0.5, y: 1 }}
                     style={StyleSheet.absoluteFill}
@@ -290,7 +293,7 @@ export default function GetStarted() {
           >
             <Animated.View style={{ transform: [{ scale: press }] }}>
               <LinearGradient
-                colors={[colors.primary, palette.gradientEnd]}
+                colors={[colors.primary, colors.gradientEnd]}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
                 style={styles.primaryBtn}
@@ -311,7 +314,7 @@ export default function GetStarted() {
                   <Ionicons
                     name="arrow-forward"
                     size={17}
-                    color={palette.white}
+                    color={colors.white}
                   />
                 </Animated.View>
                 <ShimmerSweep reduce={reduce} />

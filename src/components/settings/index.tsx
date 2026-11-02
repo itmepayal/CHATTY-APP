@@ -49,8 +49,6 @@ export function useFlash(ms = 2400) {
   return [on, show] as const;
 }
 
-/* ------------------------------ layout ------------------------------ */
-
 export function Page({
   title,
   subtitle,

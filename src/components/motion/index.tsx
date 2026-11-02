@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { palette } from "../../constants/theme";
-import { styles as screenStyles } from "../../styles/main.styles";
+import { useTheme } from "../../theme/theme";
+import { useStyles } from "../../styles/main.styles";
 
 export function useReduceMotion() {
   const [reduce, setReduce] = useState(false);
@@ -164,7 +164,9 @@ export function FloatingCard({
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 }) {
+  const screenStyles = useStyles();
   const float = useFloat(reduce, duration);
+
   return (
     <Reveal
       reduce={reduce}
@@ -195,7 +197,10 @@ export function FloatingCard({
 }
 
 export function CallIcon({ reduce }: { reduce: boolean }) {
+  const screenStyles = useStyles();
+  const { colors } = useTheme();
   const ring = useRing(reduce, 1800);
+
   return (
     <View style={screenStyles.cardIconWrap}>
       <Animated.View
@@ -218,7 +223,7 @@ export function CallIcon({ reduce }: { reduce: boolean }) {
         ]}
       />
       <View style={[screenStyles.cardIcon, screenStyles.cardIconSuccess]}>
-        <Ionicons name="call" size={11} color={palette.success} />
+        <Ionicons name="call" size={11} color={colors.success} />
       </View>
     </View>
   );
@@ -294,7 +299,11 @@ export function ShimmerSweep({
 
 const styles = StyleSheet.create({
   shimmerClip: {
-    ...StyleSheet.absoluteFill,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     overflow: "hidden",
   },
   shimmerBar: {

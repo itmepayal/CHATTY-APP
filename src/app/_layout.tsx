@@ -5,7 +5,6 @@ import {
   LayoutChangeEvent,
   Platform,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -20,7 +19,7 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
-import { colors } from "../constants/theme";
+import { ThemeProvider, makeUseStyles, useTheme } from "../theme/theme";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -40,10 +39,93 @@ const TAB_ICONS: Record<
   settings: { on: "settings", off: "settings-outline", title: "Settings" },
 };
 
-const INACTIVE = "#A0A3BD";
-const SOFT = "#EEF0FF";
 const BAR_PAD = 8;
 const BAR_HEIGHT = 68;
+
+const useStyles = makeUseStyles((t) => ({
+  wrap: {
+    alignItems: "center",
+    paddingHorizontal: t.spacing.sm + 2,
+    paddingTop: 6,
+    backgroundColor: "transparent",
+  },
+  bar: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    maxWidth: 380,
+    height: BAR_HEIGHT,
+    paddingHorizontal: BAR_PAD,
+    borderRadius: 26,
+    backgroundColor: t.colors.surface,
+    borderWidth: 1,
+    borderColor: t.colors.border,
+    elevation: 12,
+    shadowColor: t.colors.primary,
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  indicator: {
+    position: "absolute",
+    left: BAR_PAD + 4,
+    top: 8,
+    height: BAR_HEIGHT - 16,
+    borderRadius: 20,
+    backgroundColor: t.colors.primaryLight,
+    alignItems: "center",
+  },
+  indicatorBar: {
+    width: 18,
+    height: 3.5,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 4,
+    backgroundColor: t.colors.primary,
+  },
+  tab: {
+    flex: 1,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabInner: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 3,
+  },
+  label: {
+    marginTop: 3,
+    fontSize: 10.5,
+    lineHeight: 14,
+    fontFamily: t.fonts.medium,
+    color: t.colors.mutedText,
+    includeFontPadding: false,
+  },
+  labelActive: {
+    fontFamily: t.fonts.semiBold,
+    color: t.colors.primary,
+  },
+  badge: {
+    position: "absolute",
+    top: -6,
+    right: -11,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: t.colors.error,
+    borderWidth: 1.5,
+    borderColor: t.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: {
+    color: t.colors.white,
+    fontSize: 9.5,
+    fontFamily: t.fonts.semiBold,
+    includeFontPadding: false,
+  },
+}));
 
 function TabItem({
   routeName,
@@ -58,6 +140,8 @@ function TabItem({
   onPress: () => void;
   onLongPress: () => void;
 }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const cfg = TAB_ICONS[routeName];
   const lift = useRef(new Animated.Value(focused ? 1 : 0)).current;
   const press = useRef(new Animated.Value(1)).current;
@@ -110,7 +194,7 @@ function TabItem({
           <Ionicons
             name={(focused ? cfg?.on : cfg?.off) ?? "ellipse"}
             size={22}
-            color={focused ? colors.primary : INACTIVE}
+            color={focused ? colors.primary : colors.mutedText}
           />
           {badge != null && (
             <View style={styles.badge}>
@@ -136,6 +220,7 @@ function FloatingTabBar({
   emitter,
   navigateToTab,
 }: TabBarProps) {
+  const styles = useStyles();
   const insets = useSafeAreaInsets();
   const [barW, setBarW] = useState(0);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
@@ -229,7 +314,7 @@ function FloatingTabBar({
   );
 }
 
-export default function TabsLayout() {
+export default function RootLayout() {
   const [loaded, error] = useFonts({
     Poppins_400Regular,
     Poppins_500Medium,
@@ -244,158 +329,85 @@ export default function TabsLayout() {
   if (!loaded && !error) return null;
 
   return (
-    <Tabs
-      tabBar={(props) => <FloatingTabBar {...props} />}
-      backBehavior="history"
-      screenOptions={{ headerShown: false }}
-    >
-      {/* Main tabs */}
-      <Tabs.Screen name="chats" options={{ title: "Chats", tabBarBadge: 3 }} />
-      <Tabs.Screen name="calls" options={{ title: "Calls" }} />
-      <Tabs.Screen name="groups" options={{ title: "Groups" }} />
-      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
+    <ThemeProvider>
+      <Tabs
+        tabBar={(props) => <FloatingTabBar {...props} />}
+        backBehavior="history"
+        screenOptions={{ headerShown: false }}
+      >
+        {/* Main tabs */}
+        <Tabs.Screen
+          name="chats"
+          options={{ title: "Chats", tabBarBadge: 3 }}
+        />
+        <Tabs.Screen name="calls" options={{ title: "Calls" }} />
+        <Tabs.Screen name="groups" options={{ title: "Groups" }} />
+        <Tabs.Screen name="settings" options={{ title: "Settings" }} />
 
-      {/* Settings sub-screens */}
-      <Tabs.Screen name="settings/security" options={{ title: "Security" }} />
-      <Tabs.Screen name="settings/privacy" options={{ title: "Privacy" }} />
-      <Tabs.Screen
-        name="settings/appearance"
-        options={{ title: "Appearance" }}
-      />
-      <Tabs.Screen
-        name="settings/chat-settings"
-        options={{ title: "ChatSettings" }}
-      />
-      <Tabs.Screen
-        name="settings/notifications-settings"
-        options={{ title: "Notifications" }}
-      />
-      <Tabs.Screen
-        name="settings/data-storage"
-        options={{ title: "DataStorage" }}
-      />
-      <Tabs.Screen name="settings/help" options={{ title: "Help" }} />
-      <Tabs.Screen name="settings/profile" options={{ title: "Profile" }} />
-      <Tabs.Screen name="settings/sessions" options={{ title: "Sessions" }} />
-      <Tabs.Screen
-        name="settings/change-password"
-        options={{ title: "ChangePassword" }}
-      />
-      <Tabs.Screen
-        name="settings/recovery-codes"
-        options={{ title: "RecoveryCodes" }}
-      />
-      <Tabs.Screen
-        name="settings/two-factor-setup"
-        options={{ title: "TwoFactorSetup" }}
-      />
-      <Tabs.Screen
-        name="settings/two-factor-disable"
-        options={{ title: "TwoFactorDisable" }}
-      />
-      <Tabs.Screen
-        name="settings/two-factor-login"
-        options={{ title: "TwoFactorLogin" }}
-      />
-      <Tabs.Screen
-        name="settings/delete-account"
-        options={{ title: "DeleteAccount" }}
-      />
+        {/* Settings sub-screens */}
+        <Tabs.Screen name="settings/security" options={{ title: "Security" }} />
+        <Tabs.Screen name="settings/privacy" options={{ title: "Privacy" }} />
+        <Tabs.Screen
+          name="settings/appearance"
+          options={{ title: "Appearance" }}
+        />
+        <Tabs.Screen
+          name="settings/chat-settings"
+          options={{ title: "ChatSettings" }}
+        />
+        <Tabs.Screen
+          name="settings/notifications-settings"
+          options={{ title: "Notifications" }}
+        />
+        <Tabs.Screen
+          name="settings/data-storage"
+          options={{ title: "DataStorage" }}
+        />
+        <Tabs.Screen name="settings/help" options={{ title: "Help" }} />
+        <Tabs.Screen name="settings/profile" options={{ title: "Profile" }} />
+        <Tabs.Screen name="settings/sessions" options={{ title: "Sessions" }} />
+        <Tabs.Screen
+          name="settings/change-password"
+          options={{ title: "ChangePassword" }}
+        />
+        <Tabs.Screen
+          name="settings/recovery-codes"
+          options={{ title: "RecoveryCodes" }}
+        />
+        <Tabs.Screen
+          name="settings/two-factor-setup"
+          options={{ title: "TwoFactorSetup" }}
+        />
+        <Tabs.Screen
+          name="settings/two-factor-disable"
+          options={{ title: "TwoFactorDisable" }}
+        />
+        <Tabs.Screen
+          name="settings/two-factor-login"
+          options={{ title: "TwoFactorLogin" }}
+        />
+        <Tabs.Screen
+          name="settings/delete-account"
+          options={{ title: "DeleteAccount" }}
+        />
 
-      {/* Auth */}
-      <Tabs.Screen name="auth/login" options={{ title: "Login" }} />
-      <Tabs.Screen name="auth/register" options={{ title: "Register" }} />
-      <Tabs.Screen
-        name="auth/reset-password"
-        options={{ title: "ResetPassword" }}
-      />
+        {/* Auth */}
+        <Tabs.Screen name="auth/login" options={{ title: "Login" }} />
+        <Tabs.Screen name="auth/register" options={{ title: "Register" }} />
+        <Tabs.Screen
+          name="auth/reset-password"
+          options={{ title: "ResetPassword" }}
+        />
 
-      {/* Others */}
-      <Tabs.Screen name="index" options={{ title: "GetStarted" }} />
-      <Tabs.Screen name="chat/[id]" options={{ title: "ChatScreen" }} />
-      <Tabs.Screen name="chat-info/[id]" options={{ title: "ChatInfo" }} />
-      <Tabs.Screen name="call/[id]" options={{ title: "CallDetail" }} />
-      <Tabs.Screen name="video-call/[id]" options={{ title: "VideoCall" }} />
-      <Tabs.Screen name="new-chat" options={{ title: "NewChat" }} />
-      <Tabs.Screen name="new-group" options={{ title: "NewGroup" }} />
-    </Tabs>
+        {/* Others */}
+        <Tabs.Screen name="index" options={{ title: "GetStarted" }} />
+        <Tabs.Screen name="chat/[id]" options={{ title: "ChatScreen" }} />
+        <Tabs.Screen name="chat-info/[id]" options={{ title: "ChatInfo" }} />
+        <Tabs.Screen name="call/[id]" options={{ title: "CallDetail" }} />
+        <Tabs.Screen name="video-call/[id]" options={{ title: "VideoCall" }} />
+        <Tabs.Screen name="new-chat" options={{ title: "NewChat" }} />
+        <Tabs.Screen name="new-group" options={{ title: "NewGroup" }} />
+      </Tabs>
+    </ThemeProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingTop: 6,
-    backgroundColor: "transparent",
-  },
-  bar: {
-    flexDirection: "row",
-    alignItems: "center",
-    width: "100%",
-    maxWidth: 380,
-    height: BAR_HEIGHT,
-    paddingHorizontal: BAR_PAD,
-    borderRadius: 26,
-    backgroundColor: "#fff",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#E4E6F4",
-    elevation: 12,
-    shadowColor: "#4F46E5",
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-  },
-  indicator: {
-    position: "absolute",
-    left: BAR_PAD + 4,
-    top: 8,
-    height: BAR_HEIGHT - 16,
-    borderRadius: 20,
-    backgroundColor: SOFT,
-    alignItems: "center",
-  },
-  indicatorBar: {
-    width: 18,
-    height: 3.5,
-    borderBottomLeftRadius: 4,
-    borderBottomRightRadius: 4,
-    backgroundColor: colors.primary,
-  },
-  tab: {
-    flex: 1,
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tabInner: { alignItems: "center", justifyContent: "center", paddingTop: 3 },
-  label: {
-    marginTop: 3,
-    fontSize: 10.5,
-    lineHeight: 14,
-    fontFamily: "Poppins_500Medium",
-    color: INACTIVE,
-    includeFontPadding: false,
-  },
-  labelActive: { fontFamily: "Poppins_600SemiBold", color: colors.primary },
-  badge: {
-    position: "absolute",
-    top: -6,
-    right: -11,
-    minWidth: 17,
-    height: 17,
-    paddingHorizontal: 4,
-    borderRadius: 9,
-    backgroundColor: "#FF4D4F",
-    borderWidth: 1.5,
-    borderColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: {
-    color: "#fff",
-    fontSize: 9.5,
-    fontFamily: "Poppins_600SemiBold",
-    includeFontPadding: false,
-  },
-});

@@ -1,17 +1,29 @@
 import React, { useEffect, useState } from "react";
+import { ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { usePalette } from "../../components/ui";
 import {
   Banner,
-  Card,
+  Gap,
+  HeaderPill,
   NavRow,
-  Page,
-  SectionLabel,
+  ScreenHeader,
+  SectionTitle,
+  SettingsGroup,
+  SUCCESS,
   ToggleRow,
-} from "../../components/settings";
+  useSettingsStyles,
+  WARN,
+} from "../../components/settings/settings";
 
 export default function Security() {
   const router = useRouter();
-  const go = (p: string) => router.push(p as never);
+  const p = usePalette();
+  const s = useSettingsStyles();
+  const go = (path: string) => router.push(path as never);
+
   const { twofa } = useLocalSearchParams<{ twofa?: string }>();
   const [twoFA, setTwoFA] = useState(twofa === "on");
   const [alerts, setAlerts] = useState(true);
@@ -22,103 +34,129 @@ export default function Security() {
   }, [twofa]);
 
   return (
-    <Page
-      title="Account & security"
-      subtitle="Password, two-factor and devices"
-    >
-      <Banner
-        tone={twoFA ? "success" : "warn"}
-        text={
-          twoFA
-            ? "Your account is protected with two-factor authentication."
-            : "Your account isn't fully protected. Turn on two-factor authentication."
+    <SafeAreaView style={s.safe} edges={["top"]}>
+      <StatusBar style={p.isDarkBg ? "light" : "dark"} />
+
+      <ScreenHeader
+        icon="shield-checkmark"
+        title="Account & security"
+        subtitle="Password, two-factor and devices"
+        right={
+          <HeaderPill
+            icon={twoFA ? "checkmark-circle" : "alert-circle"}
+            label={twoFA ? "2FA on" : "2FA off"}
+            color={twoFA ? SUCCESS : WARN}
+            accessibilityLabel={
+              twoFA ? "Two-factor is on" : "Two-factor is off"
+            }
+          />
         }
       />
 
-      <SectionLabel>Sign-in</SectionLabel>
-      <Card>
-        <NavRow
-          icon="key-outline"
-          tint={["#EDE9FE", "#6D28D9"]}
-          label="Change password"
-          sub="Last changed 3 months ago"
-          onPress={() => go("/change-password")}
+      <ScrollView
+        contentContainerStyle={s.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <SectionTitle
+          title="Status"
+          icon="pulse-outline"
+          hint={twoFA ? "Protected" : "Action needed"}
         />
-        <ToggleRow
-          icon="mail-outline"
-          tint={["#DBEAFE", "#1D4ED8"]}
-          label="New login alerts"
-          sub="Email me when a new device signs in"
-          value={alerts}
-          onValueChange={setAlerts}
-          last
+        <Banner
+          tone={twoFA ? "success" : "warn"}
+          text={
+            twoFA
+              ? "Your account is protected with two-factor authentication."
+              : "Your account isn't fully protected. Turn on two-factor authentication."
+          }
         />
-      </Card>
 
-      <SectionLabel>Two-factor authentication</SectionLabel>
-      <Card>
-        {twoFA ? (
-          <>
-            <NavRow
-              icon="document-text-outline"
-              tint={["#FEF3C7", "#B45309"]}
-              label="Recovery codes"
-              sub="View or regenerate backup codes"
-              onPress={() => go("/recovery-codes")}
-            />
-            <NavRow
-              icon="log-in-outline"
-              tint={["#D1FAE5", "#047857"]}
-              label="Preview verification screen"
-              sub="See what you'll get when signing in"
-              onPress={() => go("/two-factor-login")}
-            />
-            <NavRow
-              icon="shield-outline"
-              tint={["#FEE2E2", "#B91C1C"]}
-              label="Turn off two-factor"
-              danger
-              onPress={() => go("/two-factor-disable")}
-              last
-            />
-          </>
-        ) : (
+        <Gap />
+        <SectionTitle title="Sign-in" icon="key-outline" />
+        <SettingsGroup>
           <NavRow
-            icon="shield-checkmark-outline"
-            tint={["#D1FAE5", "#047857"]}
-            label="Set up two-factor"
-            sub="Use an authenticator app"
-            onPress={() => go("/two-factor-setup")}
+            icon="key-outline"
+            label="Change password"
+            sub="Last changed 3 months ago"
+            onPress={() => go("/settings/change-password")}
+          />
+          <ToggleRow
+            icon="mail-outline"
+            label="New login alerts"
+            sub="Email me when a new device signs in"
+            value={alerts}
+            onValueChange={setAlerts}
             last
           />
-        )}
-      </Card>
+        </SettingsGroup>
 
-      <SectionLabel>Devices</SectionLabel>
-      <Card>
-        <NavRow
-          icon="phone-portrait-outline"
-          tint={["#CFFAFE", "#0E7490"]}
-          label="Active sessions"
-          sub="See where you're signed in"
-          value="4"
-          onPress={() => go("/sessions")}
-          last
+        <Gap />
+        <SectionTitle
+          title="Two-factor authentication"
+          icon="shield-checkmark-outline"
+          hint={twoFA ? "On" : "Off"}
         />
-      </Card>
+        <SettingsGroup>
+          {twoFA ? (
+            <>
+              <NavRow
+                icon="document-text-outline"
+                label="Recovery codes"
+                sub="View or regenerate backup codes"
+                onPress={() => go("/settings/recovery-codes")}
+              />
+              <NavRow
+                icon="log-in-outline"
+                label="Preview verification screen"
+                sub="See what you'll get when signing in"
+                onPress={() => go("/settings/two-factor-login")}
+              />
+              <NavRow
+                icon="shield-outline"
+                label="Turn off two-factor"
+                sub="Remove the extra layer of protection"
+                danger
+                onPress={() => go("/settings/two-factor-disable")}
+                last
+              />
+            </>
+          ) : (
+            <NavRow
+              icon="shield-checkmark-outline"
+              label="Set up two-factor"
+              sub="Use an authenticator app"
+              onPress={() => go("/settings/two-factor-setup")}
+              last
+            />
+          )}
+        </SettingsGroup>
 
-      <SectionLabel>Danger zone</SectionLabel>
-      <Card>
-        <NavRow
-          icon="trash-outline"
-          tint={["#FEE2E2", "#B91C1C"]}
-          label="Delete account"
-          sub="Permanently remove your account and data"
-          danger
-          onPress={() => go("/delete-account")}
-          last
-        />
-      </Card>
-    </Page>
+        <Gap />
+        <SectionTitle title="Devices" icon="phone-portrait-outline" />
+        <SettingsGroup>
+          <NavRow
+            icon="phone-portrait-outline"
+            label="Active sessions"
+            sub="See where you're signed in"
+            value="4"
+            onPress={() => go("/settings/sessions")}
+            last
+          />
+        </SettingsGroup>
+
+        <Gap />
+        <SectionTitle title="Danger zone" icon="warning-outline" danger />
+        <SettingsGroup danger>
+          <NavRow
+            icon="trash-outline"
+            label="Delete account"
+            sub="Permanently remove your account and data"
+            danger
+            onPress={() => go("/settings/delete-account")}
+            last
+          />
+        </SettingsGroup>
+      </ScrollView>
+    </SafeAreaView>
   );
 }

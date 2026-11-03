@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from "react";
-import { ScrollView } from "react-native";
+import React, { useCallback, useRef, useState } from "react";
+import { ActivityIndicator, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { usePalette } from "../../components/ui";
 import {
   Banner,
   Gap,
   HeaderPill,
+  IntroCard,
   NavRow,
   ScreenHeader,
   SectionTitle,
@@ -17,6 +18,7 @@ import {
   useSettingsStyles,
   WARN,
 } from "../../components/settings/settings";
+import { authApi, apiErrorMessage } from "../../lib/api/auth.api";
 
 export default function Security() {
   const router = useRouter();
@@ -26,12 +28,67 @@ export default function Security() {
 
   const { twofa } = useLocalSearchParams<{ twofa?: string }>();
   const [twoFA, setTwoFA] = useState(twofa === "on");
-  const [alerts, setAlerts] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [sessionCount, setSessionCount] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (twofa === "on") setTwoFA(true);
-    if (twofa === "off") setTwoFA(false);
-  }, [twofa]);
+  const [alerts, setAlerts] = useState(true);
+  const [alertErr, setAlertErr] = useState<string | undefined>();
+  const savingAlerts = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      (async () => {
+        const [status, count] = await Promise.all([
+          authApi.getSecurityStatus(),
+          authApi
+            .getSessions()
+            .then((list) => list.length)
+            .catch(() => null),
+        ]);
+
+        if (!active) return;
+
+        if (status.twoFactorEnabled !== null) {
+          setTwoFA(status.twoFactorEnabled);
+        } else {
+          if (twofa === "on") setTwoFA(true);
+          if (twofa === "off") setTwoFA(false);
+        }
+
+        if (status.loginAlerts !== null && !savingAlerts.current) {
+          setAlerts(status.loginAlerts);
+        }
+
+        setSessionCount(count);
+        setLoadingStatus(false);
+      })();
+
+      return () => {
+        active = false;
+      };
+    }, [twofa]),
+  );
+
+  const changeAlerts = async (next: boolean) => {
+    if (savingAlerts.current) return;
+
+    const prev = alerts;
+    savingAlerts.current = true;
+    setAlertErr(undefined);
+    setAlerts(next);
+
+    try {
+      const saved = await authApi.setLoginAlerts(next);
+      setAlerts(saved);
+    } catch (e: any) {
+      setAlerts(prev);
+      setAlertErr(apiErrorMessage(e, "Could not update login alerts"));
+    } finally {
+      savingAlerts.current = false;
+    }
+  };
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -42,14 +99,18 @@ export default function Security() {
         title="Account & security"
         subtitle="Password, two-factor and devices"
         right={
-          <HeaderPill
-            icon={twoFA ? "checkmark-circle" : "alert-circle"}
-            label={twoFA ? "2FA on" : "2FA off"}
-            color={twoFA ? SUCCESS : WARN}
-            accessibilityLabel={
-              twoFA ? "Two-factor is on" : "Two-factor is off"
-            }
-          />
+          loadingStatus ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <HeaderPill
+              icon={twoFA ? "checkmark-circle" : "alert-circle"}
+              label={twoFA ? "2FA on" : "2FA off"}
+              color={twoFA ? SUCCESS : WARN}
+              accessibilityLabel={
+                twoFA ? "Two-factor is on" : "Two-factor is off"
+              }
+            />
+          )
         }
       />
 
@@ -57,19 +118,23 @@ export default function Security() {
         contentContainerStyle={s.content}
         showsVerticalScrollIndicator={false}
       >
-        <SectionTitle
-          title="Status"
-          icon="pulse-outline"
-          hint={twoFA ? "Protected" : "Action needed"}
-        />
-        <Banner
+        <IntroCard
+          icon={twoFA ? "shield-checkmark" : "shield-half-outline"}
           tone={twoFA ? "success" : "warn"}
+          title={twoFA ? "Your account is protected" : "Action needed"}
           text={
             twoFA
-              ? "Your account is protected with two-factor authentication."
-              : "Your account isn't fully protected. Turn on two-factor authentication."
+              ? "Two-factor authentication is active on this account."
+              : "Turn on two-factor authentication to secure your account."
           }
         />
+
+        {!!alertErr && (
+          <>
+            <Gap />
+            <Banner tone="danger" text={alertErr} />
+          </>
+        )}
 
         <Gap />
         <SectionTitle title="Sign-in" icon="key-outline" />
@@ -85,7 +150,7 @@ export default function Security() {
             label="New login alerts"
             sub="Email me when a new device signs in"
             value={alerts}
-            onValueChange={setAlerts}
+            onValueChange={changeAlerts}
             last
           />
         </SettingsGroup>
@@ -104,12 +169,6 @@ export default function Security() {
                 label="Recovery codes"
                 sub="View or regenerate backup codes"
                 onPress={() => go("/settings/recovery-codes")}
-              />
-              <NavRow
-                icon="log-in-outline"
-                label="Preview verification screen"
-                sub="See what you'll get when signing in"
-                onPress={() => go("/settings/two-factor-login")}
               />
               <NavRow
                 icon="shield-outline"
@@ -138,7 +197,7 @@ export default function Security() {
             icon="phone-portrait-outline"
             label="Active sessions"
             sub="See where you're signed in"
-            value="4"
+            value={sessionCount !== null ? String(sessionCount) : undefined}
             onPress={() => go("/settings/sessions")}
             last
           />

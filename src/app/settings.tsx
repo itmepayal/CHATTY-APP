@@ -1,14 +1,29 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, SectionList, Switch, View } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  Animated,
+  DimensionValue,
+  Easing,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleProp,
+  Switch,
+  View,
+  ViewStyle,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import {
-  ActionSheet,
   Avatar,
   EmptyState,
   IconName,
-  SheetAction,
   Text,
   Tint,
   fonts,
@@ -18,40 +33,39 @@ import {
 } from "../components/ui";
 import { alpha, makeUseStyles, useTheme } from "../theme/theme";
 import { SettingsHeader } from "../components/settings/SettingHeader";
+import { userApi, UserProfile } from "../lib/api/user.api";
+
+/* ───────────────────────── Data ───────────────────────── */
 
 type Group = "Account" | "Preferences" | "Support";
 
 type SettingItem = {
   id: string;
   label: string;
-  short?: string;
   sub: string;
   value?: string;
+  valueLoading?: boolean;
   group: Group;
   icon: IconName;
-  quick?: boolean;
   tint: Tint;
   route?: string;
   toggle?: boolean;
   keywords: string;
 };
 
-const PROFILE = {
-  name: "Payal Yadav",
-  email: "payal@example.com",
-  tint: ["#FFE8D6", "#C2410C"] as Tint,
-};
+// Avatar ka default rang (photo na ho to)
+const PROFILE_TINT: Tint = ["#FFE8D6", "#C2410C"];
+
+// Profile ek baar aa gayi to dobara screen kholne par skeleton na dikhe
+let cachedProfile: UserProfile | null = null;
 
 const ITEMS: SettingItem[] = [
   {
     id: "account",
     label: "Account & Security",
-    short: "Security",
     sub: "Password, two-factor, devices",
-    value: "2FA on",
     group: "Account",
     icon: "shield-checkmark-outline",
-    quick: true,
     tint: ["#EDE9FE", "#6D28D9"],
     route: "/settings/security",
     keywords: "password passkey 2fa two factor login devices sessions delete",
@@ -62,7 +76,6 @@ const ITEMS: SettingItem[] = [
     sub: "Last seen, profile photo, blocked",
     group: "Account",
     icon: "lock-closed-outline",
-    quick: true,
     tint: ["#DBEAFE", "#1D4ED8"],
     route: "/settings/privacy",
     keywords: "last seen online profile photo block",
@@ -80,11 +93,9 @@ const ITEMS: SettingItem[] = [
   {
     id: "notifications",
     label: "Notifications",
-    short: "Alerts",
     sub: "Messages, groups, calls",
     group: "Preferences",
     icon: "notifications-outline",
-    quick: true,
     tint: ["#FEF3C7", "#B45309"],
     route: "/settings/notifications-settings",
     keywords: "alerts sound mute quiet hours do not disturb mention",
@@ -102,19 +113,17 @@ const ITEMS: SettingItem[] = [
   {
     id: "appearance",
     label: "Appearance",
-    short: "Theme",
     sub: "Theme, text size, bubble style",
     value: "Light",
     group: "Preferences",
     icon: "color-palette-outline",
-    quick: true,
     tint: ["#FCE7F3", "#BE185D"],
     route: "/settings/appearance",
     keywords: "theme dark mode light font size bubble spacing",
   },
   {
     id: "chat",
-    label: "Chat Settings",
+    label: "Chat settings",
     sub: "Enter key, downloads, disappearing",
     group: "Preferences",
     icon: "chatbubble-ellipses-outline",
@@ -124,7 +133,7 @@ const ITEMS: SettingItem[] = [
   },
   {
     id: "help",
-    label: "Help & Support",
+    label: "Help & support",
     sub: "FAQ, contact us, report a problem",
     group: "Support",
     icon: "help-circle-outline",
@@ -140,19 +149,21 @@ const GROUPS: Group[] = ["Account", "Preferences", "Support"];
 
 const prettyName = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
 
+/* ───────────────────────── Styles ───────────────────────── */
+
 const ICON_BOX = 38;
 const ROW_PAD = 14;
 const DIVIDER_INSET = ROW_PAD + ICON_BOX + 12;
+const PROFILE_AVATAR = 52;
 
-const useLocalStyles = makeUseStyles((t) => ({
+const useStyles = makeUseStyles((t) => ({
   /* Profile */
   profile: {
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: space.screen,
-    marginTop: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    marginTop: 16,
+    padding: 14,
     borderRadius: 20,
     backgroundColor: t.colors.card,
     borderWidth: 1,
@@ -164,8 +175,14 @@ const useLocalStyles = makeUseStyles((t) => ({
     fontFamily: fonts.semiBold,
     fontSize: 15,
     lineHeight: 21,
-    letterSpacing: -0.1,
     color: t.colors.ink,
+    includeFontPadding: false,
+  },
+  profileUser: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: t.colors.primary,
     includeFontPadding: false,
   },
   profileEmail: {
@@ -175,95 +192,61 @@ const useLocalStyles = makeUseStyles((t) => ({
     color: t.colors.muted,
     includeFontPadding: false,
   },
-  editPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: alpha(t.colors.primary, 0.1),
+  avatarWrap: { width: PROFILE_AVATAR, height: PROFILE_AVATAR },
+  avatarImg: {
+    width: PROFILE_AVATAR,
+    height: PROFILE_AVATAR,
+    borderRadius: PROFILE_AVATAR / 2,
+    backgroundColor: alpha(t.colors.muted, 0.15),
   },
-  editText: {
-    fontFamily: fonts.medium,
-    fontSize: 11.5,
-    lineHeight: 16,
-    color: t.colors.primary,
-    includeFontPadding: false,
-  },
-
-  /* Quick access */
-  quickWrap: { marginTop: 8, paddingHorizontal: space.screen },
-  quickGrid: { flexDirection: "row", gap: 10 },
-  tile: {
-    flex: 1,
-    alignItems: "center",
-    paddingTop: 14,
-    paddingBottom: 12,
-    paddingHorizontal: 4,
-    borderRadius: 18,
-    backgroundColor: t.colors.card,
-    borderWidth: 1,
-    borderColor: t.colors.hairline,
-  },
-  tilePressed: { backgroundColor: alpha(t.colors.primary, 0.06) },
-  tileIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  tileLabel: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    lineHeight: 16,
-    letterSpacing: 0.1,
-    color: alpha(t.colors.ink, 0.85),
-    marginTop: 9,
-    textAlign: "center",
-    includeFontPadding: false,
+  onlineDot: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    backgroundColor: "#22C55E",
+    borderWidth: 2,
+    borderColor: t.colors.card,
   },
 
-  /* Section label */
+  /* Skeleton (profile card jitni hi height, taaki layout jump na ho) */
+  skelLines: { gap: 4 },
+  skelChevron: { marginLeft: 8 },
+
+  /* Section */
   sectionLabel: {
     fontFamily: fonts.semiBold,
-    fontSize: 10.5,
+    fontSize: 11,
     lineHeight: 15,
-    letterSpacing: 0.9,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
     color: t.colors.muted,
+    marginTop: 24,
+    marginBottom: 8,
     paddingHorizontal: space.screen + 6,
-    paddingTop: 22,
-    paddingBottom: 8,
     includeFontPadding: false,
   },
+  card: {
+    marginHorizontal: space.screen,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: t.colors.hairline,
+    backgroundColor: t.colors.card,
+    overflow: "hidden",
+  },
 
-  /* Grouped card rows */
+  /* Row */
   row: {
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: space.screen,
+    minHeight: 64,
     paddingVertical: 11,
     paddingHorizontal: ROW_PAD,
-    minHeight: 64,
-    backgroundColor: t.colors.card,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: t.colors.hairline,
-  },
-  rowFirst: {
-    borderTopWidth: 1,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-  },
-  rowLast: {
-    borderBottomWidth: 1,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
   },
   rowPressed: { backgroundColor: alpha(t.colors.primary, 0.05) },
-  divider: {
+  rowDivider: {
     position: "absolute",
     left: DIVIDER_INSET,
     right: ROW_PAD,
@@ -281,65 +264,58 @@ const useLocalStyles = makeUseStyles((t) => ({
   rowBody: { flex: 1, minWidth: 0, marginLeft: 12 },
   rowTitle: {
     fontFamily: fonts.medium,
-    fontSize: 13.5,
+    fontSize: 14,
     lineHeight: 19,
-    letterSpacing: -0.1,
     color: t.colors.ink,
     includeFontPadding: false,
   },
   rowSub: {
     fontFamily: fonts.regular,
-    fontSize: 11.5,
+    fontSize: 12,
     lineHeight: 16,
     color: t.colors.muted,
     includeFontPadding: false,
   },
   rowRight: { flexDirection: "row", alignItems: "center", marginLeft: 8 },
-  valueText: {
-    fontFamily: fonts.regular,
-    fontSize: 11.5,
+  rowValue: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
     lineHeight: 16,
     color: t.colors.muted,
     marginRight: 4,
     includeFontPadding: false,
   },
-  sectionGap: { height: 2 },
 
-  /* Footer */
+  /* Logout + footer */
+  logoutCard: { marginTop: 28 },
   logoutRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: space.screen,
-    marginTop: 26,
-    paddingHorizontal: ROW_PAD,
     height: 56,
-    borderRadius: 18,
-    backgroundColor: t.colors.card,
-    borderWidth: 1,
-    borderColor: t.colors.hairline,
+    paddingHorizontal: ROW_PAD,
   },
   logoutPressed: { backgroundColor: alpha(t.colors.error, 0.06) },
   logoutIcon: {
     width: ICON_BOX,
     height: ICON_BOX,
     borderRadius: 12,
-    backgroundColor: alpha(t.colors.error, 0.1),
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: alpha(t.colors.error, 0.1),
   },
   logoutText: {
     flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: t.colors.error,
     marginLeft: 12,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    lineHeight: 19,
+    color: t.colors.error,
     includeFontPadding: false,
   },
   version: {
     fontFamily: fonts.regular,
-    fontSize: 10,
-    lineHeight: 14,
+    fontSize: 11,
+    lineHeight: 15,
     color: t.colors.muted,
     textAlign: "center",
     marginTop: 18,
@@ -348,102 +324,182 @@ const useLocalStyles = makeUseStyles((t) => ({
   },
 }));
 
-function ProfileCard({ onPress }: { onPress: () => void }) {
-  const local = useLocalStyles();
+/* ───────────────────────── Skeleton ───────────────────────── */
+
+/** Ek soft pulse (opacity) wala bone. Sab bones same timing par chalte hain. */
+function Bone({
+  width,
+  height,
+  radius = 6,
+  style,
+}: {
+  width: DimensionValue;
+  height: number;
+  radius?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { colors } = useTheme();
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const opacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.55, 1],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        {
+          width,
+          height,
+          borderRadius: radius,
+          backgroundColor: alpha(colors.muted, 0.18),
+          opacity,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+function ProfileSkeleton() {
+  const st = useStyles();
+
+  return (
+    <View
+      style={st.profile}
+      accessible
+      accessibilityLabel="Loading profile"
+      accessibilityState={{ busy: true }}
+    >
+      <Bone
+        width={PROFILE_AVATAR}
+        height={PROFILE_AVATAR}
+        radius={PROFILE_AVATAR / 2}
+      />
+      <View style={[st.profileBody, st.skelLines]}>
+        {/* name (lineHeight 21) */}
+        <Bone
+          width="55%"
+          height={15}
+          radius={7}
+          style={{ marginVertical: 3 }}
+        />
+        {/* username (lineHeight 17) */}
+        <Bone
+          width="32%"
+          height={11}
+          radius={6}
+          style={{ marginVertical: 3 }}
+        />
+        {/* email (lineHeight 17) */}
+        <Bone
+          width="72%"
+          height={11}
+          radius={6}
+          style={{ marginVertical: 3 }}
+        />
+      </View>
+      <Bone width={18} height={18} radius={9} style={st.skelChevron} />
+    </View>
+  );
+}
+
+/* ───────────────────────── Pieces ───────────────────────── */
+
+function ProfileCard({
+  profile,
+  onPress,
+}: {
+  profile: UserProfile | null;
+  onPress: () => void;
+}) {
+  const st = useStyles();
   const p = usePalette();
+
+  const name = profile?.fullName?.trim() || "Your profile";
+  const username = profile?.username?.trim();
+  const email = profile?.email || "Tap to edit your profile";
+  const avatarUrl = profile?.avatar?.url;
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${PROFILE.name}. ${PROFILE.email}. Edit profile`}
-      style={({ pressed }) => [local.profile, pressed && local.profilePressed]}
+      accessibilityLabel={`${name}. ${email}. Edit profile`}
+      style={({ pressed }) => [st.profile, pressed && st.profilePressed]}
     >
-      <Avatar name={PROFILE.name} tint={PROFILE.tint} size={54} online />
-      <View style={local.profileBody}>
-        <Text style={local.profileName} numberOfLines={1}>
-          {PROFILE.name}
-        </Text>
-        <Text style={local.profileEmail} numberOfLines={1}>
-          {PROFILE.email}
-        </Text>
-      </View>
-      <View style={local.editPill}>
-        <Ionicons name="create-outline" size={14} color={p.primary} />
-        <Text style={local.editText}>Edit</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function QuickAccess({
-  items,
-  onOpen,
-}: {
-  items: SettingItem[];
-  onOpen: (path: string) => void;
-}) {
-  const local = useLocalStyles();
-  return (
-    <View>
-      <Text style={local.sectionLabel}>Quick access</Text>
-      <View style={local.quickWrap}>
-        <View style={local.quickGrid}>
-          {items.map((i) => (
-            <Pressable
-              key={i.id}
-              onPress={() => i.route && onOpen(i.route)}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${i.label}`}
-              style={({ pressed }) => [
-                local.tile,
-                pressed && local.tilePressed,
-              ]}
-            >
-              <View style={[local.tileIcon, { backgroundColor: i.tint[0] }]}>
-                <Ionicons name={i.icon} size={20} color={i.tint[1]} />
-              </View>
-              <Text style={local.tileLabel} numberOfLines={1}>
-                {i.short ?? i.label}
-              </Text>
-            </Pressable>
-          ))}
+      {avatarUrl ? (
+        <View style={st.avatarWrap}>
+          <Image source={{ uri: avatarUrl }} style={st.avatarImg} />
+          <View style={st.onlineDot} />
         </View>
+      ) : (
+        <Avatar name={name} tint={PROFILE_TINT} size={PROFILE_AVATAR} online />
+      )}
+
+      <View style={st.profileBody}>
+        <Text style={st.profileName} numberOfLines={1}>
+          {name}
+        </Text>
+        {username ? (
+          <Text style={st.profileUser} numberOfLines={1}>
+            @{username}
+          </Text>
+        ) : null}
+        <Text style={st.profileEmail} numberOfLines={1}>
+          {email}
+        </Text>
       </View>
-    </View>
+      <Ionicons name="chevron-forward" size={18} color={p.muted} />
+    </Pressable>
   );
 }
 
 type RowProps = {
   item: SettingItem;
-  first: boolean;
   last: boolean;
   on: boolean;
   onOpen: (path: string) => void;
   onToggle: (id: string, v: boolean) => void;
 };
 
-function SettingRow({ item, first, last, on, onOpen, onToggle }: RowProps) {
-  const local = useLocalStyles();
+function SettingRow({ item, last, on, onOpen, onToggle }: RowProps) {
+  const st = useStyles();
   const p = usePalette();
   const { colors } = useTheme();
 
-  const rowStyle = (pressed: boolean) => [
-    local.row,
-    first && local.rowFirst,
-    last && local.rowLast,
-    pressed && local.rowPressed,
-  ];
-
-  const body = (
+  const left = (
     <>
-      <View style={[local.iconBox, { backgroundColor: item.tint[0] }]}>
+      <View style={[st.iconBox, { backgroundColor: item.tint[0] }]}>
         <Ionicons name={item.icon} size={18} color={item.tint[1]} />
       </View>
-      <View style={local.rowBody}>
-        <Text style={local.rowTitle} numberOfLines={1}>
+      <View style={st.rowBody}>
+        <Text style={st.rowTitle} numberOfLines={1}>
           {item.label}
         </Text>
-        <Text style={local.rowSub} numberOfLines={1}>
+        <Text style={st.rowSub} numberOfLines={1}>
           {item.sub}
         </Text>
       </View>
@@ -457,10 +513,10 @@ function SettingRow({ item, first, last, on, onOpen, onToggle }: RowProps) {
         accessibilityRole="switch"
         accessibilityState={{ checked: on }}
         accessibilityLabel={`${item.label}. ${item.sub}`}
-        style={({ pressed }) => rowStyle(pressed)}
+        style={({ pressed }) => [st.row, pressed && st.rowPressed]}
       >
-        {body}
-        <View style={local.rowRight}>
+        {left}
+        <View style={st.rowRight}>
           <Switch
             value={on}
             onValueChange={(v) => onToggle(item.id, v)}
@@ -468,7 +524,7 @@ function SettingRow({ item, first, last, on, onOpen, onToggle }: RowProps) {
             thumbColor="#FFFFFF"
           />
         </View>
-        {!last && <View style={local.divider} />}
+        {!last && <View style={st.rowDivider} />}
       </Pressable>
     );
   }
@@ -481,37 +537,74 @@ function SettingRow({ item, first, last, on, onOpen, onToggle }: RowProps) {
       accessibilityLabel={`${item.label}. ${item.sub}${
         item.value ? `. ${item.value}` : ""
       }`}
-      style={({ pressed }) => rowStyle(pressed)}
+      style={({ pressed }) => [st.row, pressed && st.rowPressed]}
     >
-      {body}
-      <View style={local.rowRight}>
-        {item.value ? <Text style={local.valueText}>{item.value}</Text> : null}
+      {left}
+      <View style={st.rowRight}>
+        {item.valueLoading ? (
+          <Bone width={42} height={12} radius={6} style={{ marginRight: 8 }} />
+        ) : item.value ? (
+          <Text style={st.rowValue}>{item.value}</Text>
+        ) : null}
         <Ionicons name="chevron-forward" size={16} color={p.muted} />
       </View>
-      {!last && <View style={local.divider} />}
+      {!last && <View style={st.rowDivider} />}
     </Pressable>
   );
 }
 
+/* ───────────────────────── Screen ───────────────────────── */
+
 export default function Settings() {
   const router = useRouter();
   const p = usePalette();
-  const local = useLocalStyles();
+  const st = useStyles();
   const { name: themeName } = useTheme();
 
   const go = useCallback(
     (path: string) => router.push(path as never),
     [router],
   );
+  const openLogout = useCallback(() => go("/settings/logout"), [go]);
 
   const [tab, setTab] = useState<Tab>("All");
   const [query, setQuery] = useState("");
-  const [sheetOpen, setSheetOpen] = useState(false);
   const [flags, setFlags] = useState<Record<string, boolean>>({
     push: true,
     receipts: true,
   });
+
+  /* ── user profile (asli data) ── */
+  const [profile, setProfile] = useState<UserProfile | null>(cachedProfile);
+  // Skeleton sirf tab jab cache bhi khali ho (pehli baar)
+  const [profileLoading, setProfileLoading] = useState(!cachedProfile);
+
+  // Tabs me screen mounted rehti hai, isliye har focus par naya data lo
+  // (Edit profile se wapas aate hi naam/photo update dikhe)
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        try {
+          const u = await userApi.getProfile();
+          if (u) {
+            cachedProfile = u;
+            if (alive) setProfile(u);
+          }
+        } catch {
+          // error par purana data hi dikhta rahe
+        } finally {
+          if (alive) setProfileLoading(false);
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
   const q = query.trim().toLowerCase();
+  const showExtras = !q && tab === "All"; // profile + logout sirf default view me
 
   const setFlag = useCallback(
     (id: string, v: boolean) => setFlags((f) => ({ ...f, [id]: v })),
@@ -520,10 +613,22 @@ export default function Settings() {
 
   const items = useMemo<SettingItem[]>(
     () =>
-      ITEMS.map((i) =>
-        i.id === "appearance" ? { ...i, value: prettyName(themeName) } : i,
-      ),
-    [themeName],
+      ITEMS.map((i) => {
+        if (i.id === "appearance")
+          return { ...i, value: prettyName(themeName) };
+        if (i.id === "account") {
+          // Profile aane tak 2FA badge ki jagah skeleton
+          if (profileLoading && !profile) return { ...i, valueLoading: true };
+          const tf = profile?.twoFactorEnabled;
+          return {
+            ...i,
+            value:
+              tf === true ? "2FA on" : tf === false ? "2FA off" : undefined,
+          };
+        }
+        return i;
+      }),
+    [themeName, profile, profileLoading],
   );
 
   const sections = useMemo(() => {
@@ -536,28 +641,19 @@ export default function Settings() {
         i.keywords.includes(q)
       );
     });
+
     return GROUPS.map((g) => ({
       title: g,
       data: filtered.filter((i) => i.group === g),
-    })).filter((sec) => sec.data.length > 0);
+    })).filter((s) => s.data.length > 0);
   }, [items, q, tab]);
 
-  const quick = useMemo(() => items.filter((i) => i.quick), [items]);
-  const showHeader = !q && tab === "All";
-
-  const logout = () => {
-    setSheetOpen(false);
-    router.replace("/auth/login" as never);
-  };
-
-  const logoutAll = () => {
-    setSheetOpen(false);
-    go("/settings/sessions");
-  };
+  const showSkeleton = profileLoading && !profile;
 
   return (
     <View style={{ flex: 1, backgroundColor: p.bg }}>
       <StatusBar style={p.onPrimary === "#FFFFFF" ? "light" : "dark"} />
+
       <SettingsHeader
         title="Settings"
         subtitle="Manage your account and app"
@@ -566,41 +662,27 @@ export default function Settings() {
         tabs={TABS}
         activeTab={tab}
         onChangeTab={setTab}
-        onLogout={() => setSheetOpen(true)}
+        onLogout={openLogout}
         onBell={() => go("/notifications")}
         bellDot
       />
 
-      <SectionList
-        sections={sections}
-        keyExtractor={(i) => i.id}
-        stickySectionHeadersEnabled={false}
-        keyboardShouldPersistTaps="handled"
+      <ScrollView
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={listContentStyle}
-        ListHeaderComponent={
-          showHeader ? (
-            <>
-              <ProfileCard onPress={() => go("/settings/profile")} />
-              <QuickAccess items={quick} onOpen={go} />
-            </>
-          ) : undefined
-        }
-        renderSectionHeader={({ section }) => (
-          <Text style={local.sectionLabel}>{section.title}</Text>
-        )}
-        renderItem={({ item, index, section }) => (
-          <SettingRow
-            item={item}
-            first={index === 0}
-            last={index === section.data.length - 1}
-            on={!!flags[item.id]}
-            onOpen={go}
-            onToggle={setFlag}
-          />
-        )}
-        renderSectionFooter={() => <View style={local.sectionGap} />}
-        ListEmptyComponent={
+      >
+        {showExtras &&
+          (showSkeleton ? (
+            <ProfileSkeleton />
+          ) : (
+            <ProfileCard
+              profile={profile}
+              onPress={() => go("/settings/profile")}
+            />
+          ))}
+
+        {sections.length === 0 ? (
           <EmptyState
             icon={q ? "search" : "settings-outline"}
             title={q ? `No results for “${query.trim()}”` : "Nothing here"}
@@ -610,58 +692,50 @@ export default function Settings() {
                 : "No settings in this section yet."
             }
           />
-        }
-        ListFooterComponent={
-          showHeader ? (
-            <>
+        ) : (
+          sections.map((sec) => (
+            <View key={sec.title}>
+              <Text style={st.sectionLabel}>{sec.title}</Text>
+              <View style={st.card}>
+                {sec.data.map((item, i) => (
+                  <SettingRow
+                    key={item.id}
+                    item={item}
+                    last={i === sec.data.length - 1}
+                    on={!!flags[item.id]}
+                    onOpen={go}
+                    onToggle={setFlag}
+                  />
+                ))}
+              </View>
+            </View>
+          ))
+        )}
+
+        {showExtras && (
+          <>
+            <View style={[st.card, st.logoutCard]}>
               <Pressable
-                onPress={() => setSheetOpen(true)}
+                onPress={openLogout}
                 accessibilityRole="button"
                 accessibilityLabel="Log out"
                 style={({ pressed }) => [
-                  local.logoutRow,
-                  pressed && local.logoutPressed,
+                  st.logoutRow,
+                  pressed && st.logoutPressed,
                 ]}
               >
-                <View style={local.logoutIcon}>
+                <View style={st.logoutIcon}>
                   <Ionicons name="log-out-outline" size={18} color={p.danger} />
                 </View>
-                <Text style={local.logoutText}>Log out</Text>
+                <Text style={st.logoutText}>Log out</Text>
                 <Ionicons name="chevron-forward" size={16} color={p.danger} />
               </Pressable>
-              <Text style={local.version}>Chatty v1.0.0</Text>
-            </>
-          ) : undefined
-        }
-      />
+            </View>
 
-      <ActionSheet
-        visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        title={PROFILE.name}
-        subtitle={PROFILE.email}
-        avatar={
-          <Avatar name={PROFILE.name} tint={PROFILE.tint} size={42} online />
-        }
-      >
-        <SheetAction
-          icon="log-out"
-          label="Log out from this device"
-          onPress={logout}
-          danger
-        />
-        <SheetAction
-          icon="phone-portrait"
-          label="Manage other devices"
-          onPress={logoutAll}
-          danger
-        />
-        <SheetAction
-          icon="close"
-          label="Cancel"
-          onPress={() => setSheetOpen(false)}
-        />
-      </ActionSheet>
+            <Text style={st.version}>Chatty v1.0.0</Text>
+          </>
+        )}
+      </ScrollView>
     </View>
   );
 }

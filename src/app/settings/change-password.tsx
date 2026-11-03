@@ -1,11 +1,5 @@
 import React, { useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Keyboard,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Keyboard, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { alpha } from "../../theme/theme";
@@ -14,8 +8,10 @@ import AuthInput from "../../components/forms/AuthInput";
 import AppAlert, { AlertType } from "../../components/common/AppAlert";
 import { authApi } from "../../lib/api/auth.api";
 import {
+  ActionButton,
   Card,
   DANGER,
+  IntroCard,
   Page,
   SectionTitle,
   SUCCESS,
@@ -43,7 +39,7 @@ type AlertState = {
   onDone?: () => void;
 };
 
-// Backend ya network error se readable message nikalta hai
+// Extracts a readable message from a backend or network error
 const getErrorMessage = (e: any): string => {
   const status = e?.response?.status;
   const msg = e?.response?.data?.message ?? e?.response?.data?.error;
@@ -65,7 +61,7 @@ export default function ChangePassword() {
   const [confirm, setConfirm] = useState("");
   const [tried, setTried] = useState(false);
   const [loading, setLoading] = useState(false);
-  // success ke baad badhta hai -> inputs remount hote hain (text + eye toggle reset)
+  // bumped after success -> inputs remount (text + eye toggle reset)
   const [formKey, setFormKey] = useState(0);
   const [alertState, setAlertState] = useState<AlertState>({
     visible: false,
@@ -79,8 +75,7 @@ export default function ChangePassword() {
   const scColor = STRENGTH_COLORS[sc] ?? p.line;
   const matches = confirm.length > 0 && confirm === next;
 
-  // AuthInput error ko label ke bagal me inline dikhata hai (1 line),
-  // isliye messages chhote rakhe hain.
+  // AuthInput shows errors inline next to the label, so keep them short.
   const errCur = tried && !cur ? "Enter current password" : undefined;
   const errNext =
     tried && next.length < 8
@@ -107,7 +102,6 @@ export default function ChangePassword() {
         newPassword: next,
         confirmPassword: confirm,
       });
-      // Success: sab inputs clear + keyboard band
       Keyboard.dismiss();
       setCur("");
       setNext("");
@@ -140,69 +134,30 @@ export default function ChangePassword() {
       subtitle="Keep your account secure"
       footer={
         <View style={st.footerRow}>
-          {/* Cancel (left) */}
-          <Pressable
-            onPress={() => router.back()}
+          <ActionButton
+            label="Cancel"
+            variant="ghost"
+            flex={1}
             disabled={loading}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-            style={({ pressed }) => [
-              st.btn,
-              st.btnGhost,
-              { flex: 1 },
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Text style={[st.btnText, { color: p.text }]} numberOfLines={1}>
-              Cancel
-            </Text>
-          </Pressable>
-
-          {/* Update password (right) */}
-          <Pressable
+            onPress={() => router.back()}
+          />
+          <ActionButton
+            label={loading ? "Changing..." : "Change password"}
+            icon="shield-checkmark"
+            flex={1.4}
+            loading={loading}
+            disabled={!canSubmit}
             onPress={submit}
-            disabled={!canSubmit || loading}
-            accessibilityRole="button"
-            accessibilityLabel="Change password"
-            accessibilityState={{
-              disabled: !canSubmit || loading,
-              busy: loading,
-            }}
-            style={({ pressed }) => [
-              st.btn,
-              { flex: 1.4, backgroundColor: p.primary },
-              !canSubmit && !loading && { opacity: 0.45 },
-              pressed && canSubmit && !loading && { opacity: 0.85 },
-            ]}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="shield-checkmark" size={15} color="#FFFFFF" />
-            )}
-            <Text style={[st.btnText, { color: "#FFFFFF" }]} numberOfLines={1}>
-              {loading ? "Changing..." : "Change password"}
-            </Text>
-          </Pressable>
+          />
         </View>
       }
     >
       <View style={st.stack}>
-        {/* Intro */}
-        <Card>
-          <View style={st.intro}>
-            <View style={st.introIcon}>
-              <Ionicons name="shield-checkmark" size={20} color={p.primary} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={st.introTitle}>Protect your account</Text>
-              <Text style={st.introText}>
-                Use a password you don&apos;t use anywhere else. Avoid names,
-                birthdays and common words.
-              </Text>
-            </View>
-          </View>
-        </Card>
+        <IntroCard
+          icon="shield-checkmark"
+          title="Protect your account"
+          text="Use a password you don't use anywhere else. Avoid names, birthdays and common words."
+        />
 
         {/* Current */}
         <View style={st.fieldSection}>
@@ -237,7 +192,7 @@ export default function ChangePassword() {
             textContentType="newPassword"
           />
 
-          {/* AuthInput ka marginBottom (12) cancel karne ke liye */}
+          {/* cancels AuthInput's marginBottom (12) */}
           <View style={st.pullUp}>
             <Card>
               <View style={st.strength}>
@@ -348,77 +303,20 @@ export default function ChangePassword() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Styles — only Change-password specific                              */
-/* ------------------------------------------------------------------ */
-
 const makeStyles = (p: UiPalette) =>
   StyleSheet.create({
-    stack: { gap: 22 },
+    stack: { gap: 26 },
     section: { gap: 12 },
-    // AuthInput me marginBottom: 12 hai, isliye last child ke baad extra gap cancel
+    // AuthInput has marginBottom: 12, so cancel the trailing gap
     fieldSection: { gap: 12, marginBottom: -12 },
     confirmSection: { gap: 0 },
     pullUp: { marginTop: -12 },
 
-    // Cancel (left) + Update (right) ek hi row me
     footerRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
       width: "100%",
-    },
-    btn: {
-      minWidth: 0,
-      height: 44,
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-    },
-    btnGhost: {
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      borderColor: p.line,
-    },
-    btnText: {
-      flexShrink: 1,
-      fontFamily: fonts.semiBold,
-      fontSize: 13,
-      lineHeight: 18,
-      includeFontPadding: false,
-    },
-
-    intro: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingVertical: 14,
-    },
-    introIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 13,
-      backgroundColor: alpha(p.primary, 0.14),
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    introTitle: {
-      fontFamily: fonts.semiBold,
-      fontSize: 14,
-      lineHeight: 19,
-      color: p.text,
-      includeFontPadding: false,
-    },
-    introText: {
-      fontFamily: fonts.regular,
-      fontSize: 12,
-      lineHeight: 17,
-      color: p.muted,
-      marginTop: 2,
-      includeFontPadding: false,
     },
 
     strength: { paddingTop: 14, paddingBottom: 14, gap: 12 },

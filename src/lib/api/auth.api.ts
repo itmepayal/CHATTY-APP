@@ -29,6 +29,7 @@ export type ForgotPasswordPayload = {
 export type ResetPasswordPayload = {
   token: string;
   password: string;
+  confirmPassword: string;
 };
 
 export type TwoFactorEnablePayload = {
@@ -36,19 +37,40 @@ export type TwoFactorEnablePayload = {
 };
 
 export type TwoFactorVerifyLoginPayload = {
-  // returned by /auth/login when the account has 2FA enabled
   challengeToken: string;
-  // authenticator code, or a recovery code when useRecoveryCode is true
   code: string;
   useRecoveryCode?: boolean;
 };
 
 export type TwoFactorDisablePayload = {
-  // current authenticator code only (recovery codes are NOT accepted)
   code: string;
 };
 
-/** Finds the 2FA challengeToken in a /auth/login response (or null). */
+export type DeleteAccountPayload = {
+  confirmation: string;
+  password?: string;
+  code?: string;
+  useRecoveryCode?: boolean;
+};
+
+export type SessionItem = {
+  id: string;
+  device?: string;
+  browser?: string;
+  os?: string;
+  deviceType?: "desktop" | "mobile" | "tablet" | string;
+  location?: string;
+  lastActivity?: string;
+  createdAt?: string;
+  lastActiveLabel?: string;
+  current?: boolean;
+};
+
+export type SecurityStatus = {
+  twoFactorEnabled: boolean | null;
+  loginAlerts: boolean | null;
+};
+
 export const getChallengeToken = (res: any): string | null => {
   const t =
     res?.data?.data?.challengeToken ??
@@ -68,7 +90,6 @@ export type AuthResponse = {
   [key: string]: any;
 };
 
-/** Pulls a readable message out of an axios error. */
 export const apiErrorMessage = (
   error: any,
   fallback = "Something went wrong",
@@ -81,41 +102,79 @@ export const apiErrorMessage = (
   error?.message ||
   fallback;
 
-const pickToken = (data: any): string | null => {
+const asToken = (v: any): string | null =>
+  typeof v === "string" && v.length > 0 ? v.replace(/^Bearer\s+/i, "") : null;
+
+const pickToken = (res: { data?: any; headers?: any }): string | null => {
+  const data = res?.data;
   const candidates = [
     data?.token,
     data?.accessToken,
+    data?.access_token,
     data?.data?.token,
     data?.data?.accessToken,
+    data?.data?.access_token,
     data?.tokens,
     data?.data?.tokens,
+    data?.session,
+    data?.data?.session,
   ];
 
   for (const c of candidates) {
-    if (typeof c === "string" && c.length > 0) return c;
+    const direct = asToken(c);
+    if (direct) return direct;
 
     if (c && typeof c === "object") {
-      const inner = c.accessToken ?? c.token;
-      if (typeof inner === "string" && inner.length > 0) return inner;
+      const inner = asToken(c.accessToken ?? c.access_token ?? c.token);
+      if (inner) return inner;
     }
   }
 
-  return null;
+  const h = res?.headers ?? {};
+  return (
+    asToken(h["authorization"]) ??
+    asToken(h["x-access-token"]) ??
+    asToken(h["x-auth-token"])
+  );
 };
 
-const saveToken = async (data: AuthResponse) => {
-  const token = pickToken(data);
+const saveToken = async (res: { data?: any; headers?: any }) => {
+  const token = pickToken(res);
 
   if (!token) {
-    console.log("No string token in response. Keys:", Object.keys(data ?? {}));
+    console.log(
+      "No token in response. body keys:",
+      Object.keys(res?.data ?? {}),
+      "data keys:",
+      Object.keys(res?.data?.data ?? {}),
+      "header keys:",
+      Object.keys(res?.headers ?? {}),
+    );
+    return false;
+  }
+
+  await tokenStorage.set(token);
+  return true;
+};
+
+const finishAuth = async (res: { data?: any; headers?: any }) => {
+  console.log("FINISH AUTH called, token found in response:", !!pickToken(res));
+
+  const saved = await saveToken(res);
+
+  if (Platform.OS === "web") {
+    authState.set(true);
     return;
   }
 
-  try {
-    await tokenStorage.set(token);
-  } catch (e) {
-    console.log("Could not persist token", e);
+  if (!saved) {
+    authState.set(false);
+    throw new Error(
+      "Signed in, but the server did not send an access token. Backend must return it in the response body.",
+    );
   }
+
+  authState.set(true);
 };
 
 const logError = (label: string, error: any) => {
@@ -127,6 +186,8 @@ const logError = (label: string, error: any) => {
     error?.response?.data,
   );
 };
+
+const pickUser = (d: any) => d?.user ?? d?.data?.user ?? d?.data ?? d;
 
 export const authApi = {
   async register({
@@ -166,17 +227,16 @@ export const authApi = {
         }
       }
 
-      const { data } = await api.post<AuthResponse>("/auth/register", form, {
+      const res = await api.post<AuthResponse>("/auth/register", form, {
         headers:
           Platform.OS === "web"
             ? undefined
             : { "Content-Type": "multipart/form-data" },
       });
 
-      await saveToken(data);
-      authState.set(true);
+      await finishAuth(res);
 
-      return data;
+      return res.data;
     } catch (error: any) {
       logError("Register error", error);
       throw error;
@@ -195,11 +255,11 @@ export const authApi = {
         res.data?.data?.requires2FA ||
         getChallengeToken(res)
       ) {
+        console.log("LOGIN: 2FA required, no token yet (expected)");
         return res;
       }
 
-      await saveToken(res.data);
-      authState.set(true);
+      await finishAuth(res);
 
       return res;
     } catch (error: any) {
@@ -220,6 +280,11 @@ export const authApi = {
   },
 
   async check(force = false): Promise<boolean> {
+    if (Platform.OS !== "web" && !(await tokenStorage.get())) {
+      authState.set(false);
+      return false;
+    }
+
     if (!force) {
       const cached = authState.get();
       if (cached !== null) return cached;
@@ -267,6 +332,7 @@ export const authApi = {
     try {
       const { data } = await api.post<AuthResponse>("/auth/forgot-password", {
         email: email.trim().toLowerCase(),
+        platform: Platform.OS === "web" ? "web" : "mobile",
       });
 
       return data;
@@ -276,11 +342,15 @@ export const authApi = {
     }
   },
 
-  async resetPassword({ token, password }: ResetPasswordPayload) {
+  async resetPassword({
+    token,
+    password,
+    confirmPassword,
+  }: ResetPasswordPayload) {
     try {
       const { data } = await api.post<AuthResponse>(
         `/auth/reset-password/${encodeURIComponent(token)}`,
-        { password },
+        { password, confirmPassword },
       );
 
       return data;
@@ -322,20 +392,11 @@ export const authApi = {
         useRecoveryCode: !!payload.useRecoveryCode,
       };
 
-      const { data } = await api.post<AuthResponse>(
-        "/auth/2fa/verify-login",
-        body,
-      );
+      const res = await api.post<AuthResponse>("/auth/2fa/verify-login", body);
 
-      await saveToken(data);
+      await finishAuth(res);
 
-      const token = pickToken(data);
-
-      if (token) {
-        authState.set(true);
-      }
-
-      return data;
+      return res.data;
     } catch (error: any) {
       logError("2FA login verification error", error);
       throw error;
@@ -368,4 +429,129 @@ export const authApi = {
       throw error;
     }
   },
+
+  async getSecurityStatus(): Promise<SecurityStatus> {
+    try {
+      const res = await api.get("/auth/check");
+      const user = pickUser(res.data);
+
+      const tf =
+        user?.twoFactorEnabled ??
+        user?.isTwoFactorEnabled ??
+        user?.is2FAEnabled ??
+        user?.twoFactor?.enabled ??
+        null;
+
+      const la = user?.loginAlerts ?? null;
+
+      return {
+        twoFactorEnabled: typeof tf === "boolean" ? tf : null,
+        loginAlerts: typeof la === "boolean" ? la : null,
+      };
+    } catch (error: any) {
+      logError("Security status error", error);
+      return { twoFactorEnabled: null, loginAlerts: null };
+    }
+  },
+
+  async get2FAStatus(): Promise<boolean | null> {
+    return (await authApi.getSecurityStatus()).twoFactorEnabled;
+  },
+
+  async getLoginAlerts(): Promise<boolean | null> {
+    return (await authApi.getSecurityStatus()).loginAlerts;
+  },
+
+  async setLoginAlerts(enabled: boolean): Promise<boolean> {
+    try {
+      const { data } = await api.patch<AuthResponse>(
+        "/auth/security/login-alerts",
+        { enabled },
+      );
+
+      const value = data?.data?.loginAlerts ?? data?.loginAlerts;
+      return typeof value === "boolean" ? value : enabled;
+    } catch (error: any) {
+      logError("Login alerts error", error);
+      throw error;
+    }
+  },
+
+  async getSessions(): Promise<SessionItem[]> {
+    try {
+      const res = await api.get("/auth/sessions");
+      const list = res.data?.data?.sessions ?? res.data?.sessions ?? [];
+      return Array.isArray(list) ? list : [];
+    } catch (error: any) {
+      logError("Get sessions error", error);
+      throw error;
+    }
+  },
+
+  async revokeSession(sessionId: string) {
+    try {
+      const { data } = await api.delete<AuthResponse>(
+        `/auth/sessions/${encodeURIComponent(sessionId)}`,
+      );
+      return data;
+    } catch (error: any) {
+      logError("Revoke session error", error);
+      throw error;
+    }
+  },
+
+  async revokeOtherSessions(): Promise<number> {
+    try {
+      const { data } = await api.post<AuthResponse>(
+        "/auth/sessions/revoke-others",
+      );
+      return Number(data?.data?.revokedCount ?? data?.revokedCount ?? 0);
+    } catch (error: any) {
+      logError("Revoke other sessions error", error);
+      throw error;
+    }
+  },
+
+  async deleteAccount({
+    confirmation,
+    password,
+    code,
+    useRecoveryCode,
+  }: DeleteAccountPayload) {
+    try {
+      const body: Record<string, unknown> = {
+        confirmation: confirmation.trim(),
+      };
+
+      if (password) body.password = password;
+      if (code?.trim()) {
+        body.code = code.trim();
+        body.useRecoveryCode = !!useRecoveryCode;
+      }
+
+      const { data } = await api.delete<AuthResponse>("/auth/account", {
+        data: body,
+      });
+
+      await tokenStorage.clear();
+      authState.set(false);
+
+      return data;
+    } catch (error: any) {
+      logError("Delete account error", error);
+      throw error;
+    }
+  },
+};
+
+export const performLogout = async (opts?: { everywhere?: boolean }) => {
+  if (opts?.everywhere) {
+    try {
+      await authApi.revokeOtherSessions();
+    } catch (error: any) {
+      logError("Logout everywhere error", error);
+    }
+  }
+
+  await authApi.logout();
 };

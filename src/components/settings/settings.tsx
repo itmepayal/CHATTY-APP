@@ -27,11 +27,21 @@ import { Text, fonts, usePalette, UiPalette } from "./../ui";
 export type IconName = keyof typeof Ionicons.glyphMap;
 export type Tint = readonly [string, string];
 export type SettingsStyles = ReturnType<typeof makeSettingsStyles>;
+export type Tone = "primary" | "success" | "warn" | "danger";
 
 export const DANGER = "#DC2626";
 export const SUCCESS = "#16A34A";
 export const WARN = "#D97706";
 export const INFO = "#7C3AED";
+
+const toneColor = (t: Tone, p: UiPalette) =>
+  t === "danger"
+    ? DANGER
+    : t === "warn"
+      ? WARN
+      : t === "success"
+        ? SUCCESS
+        : p.primary;
 
 export function useSettingsStyles() {
   const p = usePalette();
@@ -54,6 +64,10 @@ export function useFlash(ms = 2400) {
   );
   return [on, show] as const;
 }
+
+/* ------------------------------------------------------------------ */
+/* Layout                                                              */
+/* ------------------------------------------------------------------ */
 
 export function ScreenHeader({
   icon,
@@ -78,7 +92,7 @@ export function ScreenHeader({
         hitSlop={8}
         style={({ pressed }) => [s.backBtn, pressed && { opacity: 0.6 }]}
       >
-        <Ionicons name="arrow-back" size={20} color={p.text} />
+        <Ionicons name="chevron-back" size={22} color={p.text} />
       </Pressable>
 
       {icon ? (
@@ -256,6 +270,211 @@ export function SettingsGroup({
 
 export const Card = SettingsGroup;
 
+/* ------------------------------------------------------------------ */
+/* New: Hero, IntroCard, StepProgress, OtpInput                        */
+/* ------------------------------------------------------------------ */
+
+/** Centered, large icon + title + description. Use at the top of focused flows. */
+export function Hero({
+  icon,
+  title,
+  text,
+  tone = "primary",
+}: {
+  icon: IconName;
+  title: string;
+  text?: string;
+  tone?: Tone;
+}) {
+  const p = usePalette();
+  const s = useSettingsStyles();
+  const c = toneColor(tone, p);
+  return (
+    <View style={s.hero}>
+      <View style={[s.heroRing, { backgroundColor: alpha(c, 0.08) }]}>
+        <View style={[s.heroCore, { backgroundColor: alpha(c, 0.16) }]}>
+          <Ionicons name={icon} size={30} color={c} />
+        </View>
+      </View>
+      <Text style={s.heroTitle} accessibilityRole="header">
+        {title}
+      </Text>
+      {!!text && <Text style={s.heroText}>{text}</Text>}
+    </View>
+  );
+}
+
+/** Compact card with a tinted icon tile, title and description. */
+export function IntroCard({
+  icon,
+  title,
+  text,
+  tone = "primary",
+}: {
+  icon: IconName;
+  title: string;
+  text?: string;
+  tone?: Tone;
+}) {
+  const p = usePalette();
+  const s = useSettingsStyles();
+  const c = toneColor(tone, p);
+  return (
+    <SettingsGroup>
+      <View style={s.intro}>
+        <View style={[s.introIcon, { backgroundColor: alpha(c, 0.14) }]}>
+          <Ionicons name={icon} size={20} color={c} />
+        </View>
+        <View style={s.introBody}>
+          <Text style={s.introTitle}>{title}</Text>
+          {!!text && <Text style={s.introText}>{text}</Text>}
+        </View>
+      </View>
+    </SettingsGroup>
+  );
+}
+
+/** Numbered stepper with labels: ● ─ ● ─ ○ */
+export function StepProgress({
+  step,
+  labels,
+}: {
+  step: number;
+  labels: string[];
+}) {
+  const p = usePalette();
+  const s = useSettingsStyles();
+  return (
+    <View
+      style={s.stepper}
+      accessibilityLabel={`Step ${step} of ${labels.length}`}
+    >
+      {labels.map((l, i) => {
+        const n = i + 1;
+        const done = n < step;
+        const on = n === step;
+        return (
+          <React.Fragment key={l}>
+            {i > 0 && (
+              <View
+                style={[
+                  s.stepLine,
+                  n <= step && { backgroundColor: p.primary },
+                ]}
+              />
+            )}
+            <View style={s.stepItem}>
+              <View
+                style={[
+                  s.stepDot,
+                  (done || on) && {
+                    backgroundColor: p.primary,
+                    borderColor: p.primary,
+                  },
+                ]}
+              >
+                {done ? (
+                  <Ionicons name="checkmark" size={14} color={p.onPrimary} />
+                ) : (
+                  <Text style={[s.stepNum, on && { color: p.onPrimary }]}>
+                    {n}
+                  </Text>
+                )}
+              </View>
+              <Text
+                style={[s.stepLabel, (on || done) && { color: p.text }]}
+                numberOfLines={1}
+              >
+                {l}
+              </Text>
+            </View>
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Segmented one-time-code input: one box per digit, one hidden real input. */
+export function OtpInput({
+  value,
+  onChange,
+  length = 6,
+  error,
+  hint,
+  autoFocus,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  length?: number;
+  error?: string;
+  hint?: string;
+  autoFocus?: boolean;
+  disabled?: boolean;
+}) {
+  const p = usePalette();
+  const s = useSettingsStyles();
+  const [focus, setFocus] = useState(false);
+  const cells = Array.from({ length }, (_, i) => i);
+  const activeIdx = Math.min(value.length, length - 1);
+
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={s.otpRow}>
+        {cells.map((i) => {
+          const ch = value[i];
+          const active = focus && i === activeIdx && !disabled;
+          return (
+            <View
+              key={i}
+              style={[
+                s.otpCell,
+                !!ch && { borderColor: alpha(p.primary, 0.45) },
+                active && {
+                  borderColor: p.primary,
+                  backgroundColor: alpha(p.primary, 0.06),
+                },
+                !!error && { borderColor: DANGER },
+              ]}
+            >
+              <Text style={s.otpChar}>{ch ?? ""}</Text>
+            </View>
+          );
+        })}
+        <TextInput
+          value={value}
+          onChangeText={(t) => onChange(t.replace(/\D/g, "").slice(0, length))}
+          onFocus={() => setFocus(true)}
+          onBlur={() => setFocus(false)}
+          keyboardType="number-pad"
+          maxLength={length}
+          autoFocus={autoFocus}
+          editable={!disabled}
+          autoComplete="one-time-code"
+          textContentType="oneTimeCode"
+          caretHidden
+          selectionColor="transparent"
+          accessibilityLabel={`${length}-digit code`}
+          style={s.otpHidden}
+        />
+      </View>
+      {error ? (
+        <View style={s.otpMsg}>
+          <Ionicons name="alert-circle" size={14} color={DANGER} />
+          <Text style={s.error}>{error}</Text>
+        </View>
+      ) : hint ? (
+        <Text style={[s.hint, { textAlign: "center" }]}>{hint}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Rows                                                                */
+/* ------------------------------------------------------------------ */
+
 export function IconTile({
   icon,
   danger,
@@ -271,7 +490,7 @@ export function IconTile({
   const bg = tint ? tint[0] : alpha(color, 0.12);
   return (
     <View style={[s.iconTile, { backgroundColor: bg }]}>
-      <Ionicons name={icon} size={16} color={color} />
+      <Ionicons name={icon} size={17} color={color} />
     </View>
   );
 }
@@ -369,7 +588,11 @@ export function NavRow({
       right={
         <>
           {!!value && <Text style={s.settingValue}>{value}</Text>}
-          <Ionicons name="chevron-forward" size={16} color={p.muted} />
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={danger ? alpha(DANGER, 0.6) : p.muted}
+          />
         </>
       }
     />
@@ -522,6 +745,10 @@ export function Segmented<T extends string>({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Inputs & buttons                                                    */
+/* ------------------------------------------------------------------ */
+
 export function Field({
   label,
   error,
@@ -636,7 +863,7 @@ export function Button({
   );
 }
 
-/** Compact footer button (Cancel / primary / danger) with loading spinner. */
+/** Footer button (Cancel / primary / danger) with loading spinner. */
 export function ActionButton({
   label,
   onPress,
@@ -673,13 +900,13 @@ export function ActionButton({
         ghost ? s.actionBtnGhost : { backgroundColor: bg },
         flex !== undefined && { flex },
         off && { opacity: 0.45 },
-        pressed && !off && !loading && { opacity: ghost ? 0.7 : 0.85 },
+        pressed && !off && !loading && { opacity: ghost ? 0.7 : 0.88 },
       ]}
     >
       {loading ? (
         <ActivityIndicator size="small" color={fg} />
       ) : icon ? (
-        <Ionicons name={icon} size={15} color={fg} />
+        <Ionicons name={icon} size={16} color={fg} />
       ) : null}
       <Text style={[s.actionBtnText, { color: fg }]} numberOfLines={1}>
         {label}
@@ -723,15 +950,20 @@ export function Banner({
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Styles                                                              */
+/* ------------------------------------------------------------------ */
+
 export const makeSettingsStyles = (p: UiPalette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: p.bg },
-    content: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 48 },
-    gap: { height: 24 },
+    content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 48 },
+    gap: { height: 28 },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: p.line },
     footer: {
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingTop: 12,
+      paddingBottom: 12,
       gap: 10,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: p.line,
@@ -744,7 +976,7 @@ export const makeSettingsStyles = (p: UiPalette) =>
       gap: 10,
       paddingHorizontal: 16,
       paddingTop: 8,
-      paddingBottom: 12,
+      paddingBottom: 14,
       backgroundColor: p.bg,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: p.line,
@@ -787,9 +1019,9 @@ export const makeSettingsStyles = (p: UiPalette) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
-      height: 34,
+      height: 32,
       paddingHorizontal: 12,
-      borderRadius: 17,
+      borderRadius: 16,
     },
     pillText: {
       fontFamily: fonts.semiBold,
@@ -840,39 +1072,44 @@ export const makeSettingsStyles = (p: UiPalette) =>
     },
 
     group: {
-      borderRadius: 16,
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: p.line,
       backgroundColor: p.card,
       paddingHorizontal: 14,
+      overflow: "hidden",
     },
-    groupDanger: { borderColor: alpha(DANGER, 0.3) },
+    groupDanger: {
+      borderColor: alpha(DANGER, 0.3),
+      backgroundColor: alpha(DANGER, 0.03),
+    },
     setting: { paddingVertical: 14, gap: 12 },
     settingDivider: {
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: p.line,
     },
-    settingHead: { flexDirection: "row", alignItems: "center", gap: 10 },
+    settingHead: { flexDirection: "row", alignItems: "center", gap: 12 },
     settingText: { flex: 1, minWidth: 0 },
     iconTile: {
-      width: 30,
-      height: 30,
-      borderRadius: 9,
+      width: 34,
+      height: 34,
+      borderRadius: 10,
       alignItems: "center",
       justifyContent: "center",
     },
     settingLabel: {
       fontFamily: fonts.medium,
-      fontSize: 13.5,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
       color: p.text,
       includeFontPadding: false,
     },
     settingSub: {
       fontFamily: fonts.regular,
-      fontSize: 11,
-      lineHeight: 15,
+      fontSize: 11.5,
+      lineHeight: 16,
       color: p.muted,
+      marginTop: 1,
       includeFontPadding: false,
     },
     settingValue: {
@@ -881,6 +1118,135 @@ export const makeSettingsStyles = (p: UiPalette) =>
       lineHeight: 17,
       color: p.muted,
       includeFontPadding: false,
+    },
+
+    /* hero */
+    hero: { alignItems: "center", gap: 8, paddingVertical: 4 },
+    heroRing: {
+      width: 96,
+      height: 96,
+      borderRadius: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 6,
+    },
+    heroCore: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    heroTitle: {
+      fontFamily: fonts.semiBold,
+      fontSize: 21,
+      lineHeight: 27,
+      letterSpacing: -0.4,
+      color: p.text,
+      textAlign: "center",
+      includeFontPadding: false,
+    },
+    heroText: {
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 19,
+      color: p.muted,
+      textAlign: "center",
+      maxWidth: 320,
+      includeFontPadding: false,
+    },
+
+    /* intro card */
+    intro: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 14,
+    },
+    introIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 13,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    introBody: { flex: 1, minWidth: 0 },
+    introTitle: {
+      fontFamily: fonts.semiBold,
+      fontSize: 14,
+      lineHeight: 19,
+      color: p.text,
+      includeFontPadding: false,
+    },
+    introText: {
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 17,
+      color: p.muted,
+      marginTop: 2,
+      includeFontPadding: false,
+    },
+
+    /* stepper */
+    stepper: { flexDirection: "row", alignItems: "flex-start" },
+    stepItem: { width: 72, alignItems: "center", gap: 6 },
+    stepDot: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      borderWidth: 1.5,
+      borderColor: p.line,
+      backgroundColor: p.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stepNum: {
+      fontFamily: fonts.semiBold,
+      fontSize: 12.5,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+    stepLabel: {
+      fontFamily: fonts.medium,
+      fontSize: 11.5,
+      lineHeight: 15,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+    stepLine: {
+      flex: 1,
+      height: 2,
+      borderRadius: 1,
+      marginTop: 14,
+      backgroundColor: p.line,
+    },
+
+    /* otp */
+    otpRow: { flexDirection: "row", gap: 8, justifyContent: "center" },
+    otpCell: {
+      flex: 1,
+      maxWidth: 52,
+      height: 60,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderColor: p.line,
+      backgroundColor: p.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    otpChar: {
+      fontFamily: fonts.semiBold,
+      fontSize: 24,
+      lineHeight: 30,
+      color: p.text,
+      includeFontPadding: false,
+    },
+    otpHidden: { ...StyleSheet.absoluteFill, opacity: 0 },
+    otpMsg: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
     },
 
     radio: {
@@ -927,7 +1293,7 @@ export const makeSettingsStyles = (p: UiPalette) =>
     seg: {
       flexDirection: "row",
       padding: 3,
-      borderRadius: 11,
+      borderRadius: 12,
       backgroundColor: p.surface,
     },
     segThumb: {
@@ -935,7 +1301,7 @@ export const makeSettingsStyles = (p: UiPalette) =>
       top: 3,
       bottom: 3,
       left: 3,
-      borderRadius: 8,
+      borderRadius: 9,
       backgroundColor: p.card,
       shadowColor: "#000",
       shadowOpacity: 0.08,
@@ -945,7 +1311,7 @@ export const makeSettingsStyles = (p: UiPalette) =>
     },
     segItem: {
       flex: 1,
-      height: 32,
+      height: 34,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -984,7 +1350,7 @@ export const makeSettingsStyles = (p: UiPalette) =>
     },
     error: {
       fontFamily: fonts.regular,
-      fontSize: 11.5,
+      fontSize: 12,
       lineHeight: 16,
       color: DANGER,
       includeFontPadding: false,
@@ -1014,13 +1380,13 @@ export const makeSettingsStyles = (p: UiPalette) =>
 
     actionBtn: {
       minWidth: 0,
-      height: 44,
-      borderRadius: 12,
-      paddingHorizontal: 12,
+      height: 48,
+      borderRadius: 14,
+      paddingHorizontal: 14,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 6,
+      gap: 7,
     },
     actionBtnGhost: {
       backgroundColor: "transparent",
@@ -1030,7 +1396,7 @@ export const makeSettingsStyles = (p: UiPalette) =>
     actionBtnText: {
       flexShrink: 1,
       fontFamily: fonts.semiBold,
-      fontSize: 13,
+      fontSize: 13.5,
       lineHeight: 18,
       includeFontPadding: false,
     },

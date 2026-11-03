@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +20,10 @@ import {
   Poppins_700Bold,
 } from "@expo-google-fonts/poppins";
 import { ThemeProvider, makeUseStyles, useTheme } from "../theme/theme";
+import { usePalette } from "../components/ui";
+import { authApi } from "../lib/api/auth.api";
+import { setUnauthorizedHandler } from "../lib/api/client";
+import { authState } from "../lib/storage/authState";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -41,6 +45,65 @@ const TAB_ICONS: Record<
 
 const BAR_PAD = 8;
 const BAR_HEIGHT = 68;
+
+const PUBLIC_PATHS = ["", "index", "settings/two-factor-login"];
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const segments = useSegments();
+  const p = usePalette();
+  const [authed, setAuthed] = useState<boolean | null>(authState.get());
+
+  useEffect(() => {
+    let alive = true;
+    authApi.check().then((ok) => {
+      if (alive) setAuthed(ok);
+    });
+    const unsub = authState.subscribe((v) => setAuthed(v));
+    setUnauthorizedHandler(() => router.replace("/auth/login" as never));
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, [router]);
+
+  const path = (segments as string[]).join("/");
+  const isPublic = segments[0] === "auth" || PUBLIC_PATHS.includes(path);
+
+  useEffect(() => {
+    if (authed === null) return;
+
+    if (!authed && !isPublic) {
+      router.replace("/auth/login" as never);
+      return;
+    }
+
+    if (authed && isPublic && path !== "settings/two-factor-login") {
+      router.replace("/chats" as never);
+    }
+  }, [authed, isPublic, path, router]);
+
+  const blocked = authed === null || (!authed && !isPublic);
+
+  return (
+    <View style={{ flex: 1 }}>
+      {children}
+      {blocked && (
+        <View
+          pointerEvents="auto"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: p.bg,
+          }}
+        />
+      )}
+    </View>
+  );
+}
 
 const useStyles = makeUseStyles((t) => ({
   wrap: {
@@ -330,84 +393,103 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <Tabs
-        tabBar={(props) => <FloatingTabBar {...props} />}
-        backBehavior="history"
-        screenOptions={{ headerShown: false }}
-      >
-        {/* Main tabs */}
-        <Tabs.Screen
-          name="chats"
-          options={{ title: "Chats", tabBarBadge: 3 }}
-        />
-        <Tabs.Screen name="calls" options={{ title: "Calls" }} />
-        <Tabs.Screen name="groups" options={{ title: "Groups" }} />
-        <Tabs.Screen name="settings" options={{ title: "Settings" }} />
+      <AuthGate>
+        <Tabs
+          tabBar={(props) => <FloatingTabBar {...props} />}
+          backBehavior="history"
+          screenOptions={{ headerShown: false }}
+        >
+          {/* Main tabs */}
+          <Tabs.Screen
+            name="chats"
+            options={{ title: "Chats", tabBarBadge: 3 }}
+          />
+          <Tabs.Screen name="calls" options={{ title: "Calls" }} />
+          <Tabs.Screen name="groups" options={{ title: "Groups" }} />
+          <Tabs.Screen name="settings" options={{ title: "Settings" }} />
 
-        {/* Settings sub-screens */}
-        <Tabs.Screen name="settings/security" options={{ title: "Security" }} />
-        <Tabs.Screen name="settings/privacy" options={{ title: "Privacy" }} />
-        <Tabs.Screen
-          name="settings/appearance"
-          options={{ title: "Appearance" }}
-        />
-        <Tabs.Screen
-          name="settings/chat-settings"
-          options={{ title: "ChatSettings" }}
-        />
-        <Tabs.Screen
-          name="settings/notifications-settings"
-          options={{ title: "Notifications" }}
-        />
-        <Tabs.Screen
-          name="settings/data-storage"
-          options={{ title: "DataStorage" }}
-        />
-        <Tabs.Screen name="settings/help" options={{ title: "Help" }} />
-        <Tabs.Screen name="settings/profile" options={{ title: "Profile" }} />
-        <Tabs.Screen name="settings/sessions" options={{ title: "Sessions" }} />
-        <Tabs.Screen
-          name="settings/change-password"
-          options={{ title: "ChangePassword" }}
-        />
-        <Tabs.Screen
-          name="settings/recovery-codes"
-          options={{ title: "RecoveryCodes" }}
-        />
-        <Tabs.Screen
-          name="settings/two-factor-setup"
-          options={{ title: "TwoFactorSetup" }}
-        />
-        <Tabs.Screen
-          name="settings/two-factor-disable"
-          options={{ title: "TwoFactorDisable" }}
-        />
-        <Tabs.Screen
-          name="settings/two-factor-login"
-          options={{ title: "TwoFactorLogin" }}
-        />
-        <Tabs.Screen
-          name="settings/delete-account"
-          options={{ title: "DeleteAccount" }}
-        />
+          {/* Settings sub-screens */}
+          <Tabs.Screen
+            name="settings/security"
+            options={{ title: "Security" }}
+          />
+          <Tabs.Screen name="settings/privacy" options={{ title: "Privacy" }} />
+          <Tabs.Screen
+            name="settings/appearance"
+            options={{ title: "Appearance" }}
+          />
+          <Tabs.Screen
+            name="settings/chat-settings"
+            options={{ title: "ChatSettings" }}
+          />
+          <Tabs.Screen
+            name="settings/notifications-settings"
+            options={{ title: "Notifications" }}
+          />
+          <Tabs.Screen
+            name="settings/data-storage"
+            options={{ title: "DataStorage" }}
+          />
+          <Tabs.Screen name="settings/profile" options={{ title: "Profile" }} />
+          <Tabs.Screen
+            name="settings/sessions"
+            options={{ title: "Sessions" }}
+          />
+          <Tabs.Screen
+            name="settings/change-password"
+            options={{ title: "ChangePassword" }}
+          />
+          <Tabs.Screen
+            name="settings/recovery-codes"
+            options={{ title: "RecoveryCodes" }}
+          />
+          <Tabs.Screen
+            name="settings/two-factor-setup"
+            options={{ title: "TwoFactorSetup" }}
+          />
+          <Tabs.Screen
+            name="settings/two-factor-disable"
+            options={{ title: "TwoFactorDisable" }}
+          />
+          <Tabs.Screen
+            name="settings/two-factor-login"
+            options={{ title: "TwoFactorLogin" }}
+          />
+          <Tabs.Screen
+            name="settings/delete-account"
+            options={{ title: "DeleteAccount" }}
+          />
+          <Tabs.Screen name="settings/logout" options={{ title: "Logout" }} />
+          <Tabs.Screen
+            name="settings/help"
+            options={{ title: "HelpSupport" }}
+          />
 
-        {/* Auth */}
-        <Tabs.Screen name="auth/login" options={{ title: "Login" }} />
-        <Tabs.Screen name="auth/register" options={{ title: "Register" }} />
-        <Tabs.Screen
-          name="auth/reset-password"
-          options={{ title: "ResetPassword" }}
-        />
+          {/* Auth */}
+          <Tabs.Screen name="auth/login" options={{ title: "Login" }} />
+          <Tabs.Screen name="auth/register" options={{ title: "Register" }} />
+          <Tabs.Screen
+            name="auth/reset-password"
+            options={{ title: "ResetPassword" }}
+          />
+          <Tabs.Screen
+            name="auth/new-password"
+            options={{ title: "NewPassword" }}
+          />
 
-        {/* Others */}
-        <Tabs.Screen name="index" options={{ title: "GetStarted" }} />
-        <Tabs.Screen name="chat/[id]" options={{ title: "ChatScreen" }} />
-        <Tabs.Screen name="chat-info/[id]" options={{ title: "ChatInfo" }} />
-        <Tabs.Screen name="call/[id]" options={{ title: "CallDetail" }} />
-        <Tabs.Screen name="video-call/[id]" options={{ title: "VideoCall" }} />
-        <Tabs.Screen name="new-chat" options={{ title: "NewChat" }} />
-        <Tabs.Screen name="new-group" options={{ title: "NewGroup" }} />
-      </Tabs>
+          {/* Others */}
+          <Tabs.Screen name="index" options={{ title: "GetStarted" }} />
+          <Tabs.Screen name="chat/[id]" options={{ title: "ChatScreen" }} />
+          <Tabs.Screen name="chat-info/[id]" options={{ title: "ChatInfo" }} />
+          <Tabs.Screen name="call/[id]" options={{ title: "CallDetail" }} />
+          <Tabs.Screen
+            name="video-call/[id]"
+            options={{ title: "VideoCall" }}
+          />
+          <Tabs.Screen name="new-chat" options={{ title: "NewChat" }} />
+          <Tabs.Screen name="new-group" options={{ title: "NewGroup" }} />
+        </Tabs>
+      </AuthGate>
     </ThemeProvider>
   );
 }

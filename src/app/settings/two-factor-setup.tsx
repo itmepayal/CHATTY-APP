@@ -1,21 +1,25 @@
 import React, { useMemo, useState } from "react";
-import { Image, Keyboard, StyleSheet, View } from "react-native";
+import { Image, Keyboard, Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import QRCode from "react-native-qrcode-svg";
 import { alpha } from "../../theme/theme";
 import { Text, fonts, usePalette, UiPalette } from "../../components/ui";
-import AuthInput from "../../components/forms/AuthInput";
 import AppAlert from "../../components/common/AppAlert";
-import { ActionButton } from "../../components/settings/settings";
 import {
+  ActionButton,
+  Banner,
   Card,
-  DANGER,
+  Hero,
+  IntroCard,
+  OtpInput,
   Page,
   SectionTitle,
-  WARN,
+  StepProgress,
 } from "../../components/settings/settings";
 import { authApi, apiErrorMessage } from "../../lib/api/auth.api";
+
+const LABELS = ["Start", "Scan", "Backup"];
 
 const groupSecret = (s: string) =>
   s
@@ -55,9 +59,16 @@ export default function TwoFactorSetup() {
       const res = await authApi.setup2FA();
       const d = res?.data ?? res;
 
-      setOtpauthUrl(d?.otpauthUrl ?? d?.otpauth_url ?? d?.otpauthUri);
-      setQrImage(d?.qrCode ?? d?.qrCodeUrl ?? d?.qr);
-      setSecret(String(d?.secret ?? d?.manualKey ?? d?.base32 ?? ""));
+      // swagger: data.qrCodeUrl (image / data-URL) + data.manualKey
+      const qr: string | undefined = d?.qrCodeUrl ?? d?.qrCode ?? d?.qr;
+      if (typeof qr === "string" && qr.startsWith("otpauth://")) {
+        setOtpauthUrl(qr);
+        setQrImage(undefined);
+      } else {
+        setQrImage(qr);
+        setOtpauthUrl(d?.otpauthUrl ?? d?.otpauth_url);
+      }
+      setSecret(String(d?.manualKey ?? d?.secret ?? d?.base32 ?? ""));
       setStep(2);
     } catch (e: any) {
       setSetupErr(apiErrorMessage(e, "Could not start setup"));
@@ -88,27 +99,30 @@ export default function TwoFactorSetup() {
     }
   };
 
-  const StepBars = (
-    <View style={st.bars}>
-      {[1, 2, 3].map((i) => (
-        <View
-          key={i}
-          style={[st.bar, { backgroundColor: i <= step ? p.primary : p.line }]}
-        />
-      ))}
-    </View>
-  );
+  const shareCodes = async () => {
+    try {
+      await Share.share({
+        message: `Chatty recovery codes\n\n${codes.join("\n")}`,
+      });
+    } catch {}
+  };
 
   const stepRow = (
     n: number,
     icon: keyof typeof Ionicons.glyphMap,
+    title: string,
     text: string,
+    last?: boolean,
   ) => (
-    <View key={n} style={st.stepRow}>
+    <View key={n} style={[st.stepRow, !last && st.stepRowDivider]}>
       <View style={st.stepIcon}>
-        <Ionicons name={icon} size={16} color={p.primary} />
+        <Ionicons name={icon} size={18} color={p.primary} />
       </View>
-      <Text style={st.stepText}>{text}</Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={st.stepTitle}>{title}</Text>
+        <Text style={st.stepText}>{text}</Text>
+      </View>
+      <Text style={st.stepIndex}>{n}</Text>
     </View>
   );
 
@@ -139,65 +153,38 @@ export default function TwoFactorSetup() {
         }
       >
         <View style={st.stack}>
-          {StepBars}
-          <Card>
-            <View style={st.intro}>
-              <View style={st.introIcon}>
-                <Ionicons
-                  name="phone-portrait-outline"
-                  size={20}
-                  color={p.primary}
-                />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={st.introTitle}>Add an extra layer</Text>
-                <Text style={st.introText}>
-                  You&apos;ll need an authenticator app like Google
-                  Authenticator, Authy or 1Password.
-                </Text>
-              </View>
-            </View>
-          </Card>
+          <StepProgress step={1} labels={LABELS} />
 
-          {!!setupErr && (
-            <Card>
-              <View style={st.intro}>
-                <View
-                  style={[
-                    st.introIcon,
-                    { backgroundColor: alpha(DANGER, 0.14) },
-                  ]}
-                >
-                  <Ionicons name="alert-circle" size={20} color={DANGER} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={st.introTitle}>Setup failed</Text>
-                  <Text style={st.introText}>{setupErr}</Text>
-                </View>
-              </View>
-            </Card>
-          )}
+          <Hero
+            icon="phone-portrait-outline"
+            title="Add an extra layer"
+            text="You'll need an authenticator app like Google Authenticator, Authy or 1Password."
+          />
+
+          {!!setupErr && <Banner tone="danger" text={setupErr} />}
 
           <View style={st.section}>
             <SectionTitle title="How it works" icon="list-outline" />
             <Card>
-              <View style={st.steps}>
-                {stepRow(
-                  1,
-                  "qr-code-outline",
-                  "Scan a QR code with your authenticator app.",
-                )}
-                {stepRow(
-                  2,
-                  "keypad-outline",
-                  "Enter the 6-digit code it shows.",
-                )}
-                {stepRow(
-                  3,
-                  "key-outline",
-                  "Save your recovery codes somewhere safe.",
-                )}
-              </View>
+              {stepRow(
+                1,
+                "qr-code-outline",
+                "Scan the QR code",
+                "Use your authenticator app.",
+              )}
+              {stepRow(
+                2,
+                "keypad-outline",
+                "Enter the 6-digit code",
+                "It confirms the app is linked.",
+              )}
+              {stepRow(
+                3,
+                "key-outline",
+                "Save recovery codes",
+                "Keep them somewhere safe.",
+                true,
+              )}
             </Card>
           </View>
         </View>
@@ -230,14 +217,15 @@ export default function TwoFactorSetup() {
               icon="shield-checkmark"
               flex={1.4}
               loading={loading}
-              disabled={!code}
+              disabled={code.length !== 6}
               onPress={verify}
             />
           </View>
         }
       >
         <View style={st.stack}>
-          {StepBars}
+          <StepProgress step={2} labels={LABELS} />
+
           <Card>
             <View style={st.qrWrap}>
               <View style={st.qrBox}>
@@ -256,10 +244,13 @@ export default function TwoFactorSetup() {
                   </View>
                 )}
               </View>
+              <Text style={st.qrCaption}>
+                Scan this code with your authenticator app
+              </Text>
               {!!secret && (
                 <>
                   <Text style={st.or}>
-                    Can&apos;t scan? Enter this key manually
+                    Can&apos;t scan? Enter this key instead
                   </Text>
                   <Text selectable style={st.secret}>
                     {groupSecret(secret)}
@@ -269,21 +260,21 @@ export default function TwoFactorSetup() {
             </View>
           </Card>
 
-          <View style={st.confirmSection}>
-            <AuthInput
-              label="6-digit code"
-              leftIcon="keypad-outline"
+          <View style={st.section}>
+            <SectionTitle
+              title="Enter the 6-digit code"
+              icon="keypad-outline"
+            />
+            <OtpInput
               value={code}
-              onChangeText={(t: string) => {
+              onChange={(v) => {
                 setApiErr(undefined);
-                setCode(t.replace(/\D/g, "").slice(0, 6));
+                setCode(v);
               }}
               error={errCode}
-              placeholder="123456"
-              keyboardType="number-pad"
-              maxLength={6}
+              hint="The code changes every 30 seconds."
+              disabled={loading}
             />
-            <Text style={st.hint}>The code changes every 30 seconds.</Text>
           </View>
         </View>
       </Page>
@@ -296,51 +287,52 @@ export default function TwoFactorSetup() {
       title="Save recovery codes"
       subtitle="Step 3 of 3"
       footer={
-        <ActionButton
-          label="I've saved them"
-          icon="checkmark"
-          onPress={() => setDone(true)}
-        />
+        <View style={st.footerRow}>
+          <ActionButton
+            label="Share codes"
+            variant="ghost"
+            icon="share-outline"
+            flex={1}
+            disabled={!codes.length}
+            onPress={shareCodes}
+          />
+          <ActionButton
+            label="I've saved them"
+            icon="checkmark"
+            flex={1.4}
+            onPress={() => setDone(true)}
+          />
+        </View>
       }
     >
       <View style={st.stack}>
-        {StepBars}
-        <Card>
-          <View style={st.intro}>
-            <View
-              style={[st.introIcon, { backgroundColor: alpha(WARN, 0.16) }]}
-            >
-              <Ionicons name="warning" size={20} color={WARN} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={st.introTitle}>Keep these safe</Text>
-              <Text style={st.introText}>
-                Each code works once. Store them somewhere safe. You won&apos;t
-                see them again.
-              </Text>
-            </View>
-          </View>
-        </Card>
+        <StepProgress step={3} labels={LABELS} />
+
+        <IntroCard
+          icon="warning"
+          tone="warn"
+          title="Keep these safe"
+          text="Each code works once. Store them somewhere safe. You won't see them again."
+        />
 
         <View style={st.section}>
           <SectionTitle title="Your codes" icon="key-outline" />
-          <Card>
-            {codes.length ? (
-              <View style={st.grid}>
-                {codes.map((c) => (
-                  <Text key={c} selectable style={st.code}>
+          {codes.length ? (
+            <View style={st.grid}>
+              {codes.map((c) => (
+                <View key={c} style={st.codeChip}>
+                  <Text selectable style={st.code}>
                     {c}
                   </Text>
-                ))}
-              </View>
-            ) : (
-              <View style={st.intro}>
-                <Text style={st.introText}>
-                  No recovery codes were returned by the server.
-                </Text>
-              </View>
-            )}
-          </Card>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Banner
+              tone="warn"
+              text="No recovery codes were returned by the server."
+            />
+          )}
         </View>
       </View>
 
@@ -369,9 +361,8 @@ export default function TwoFactorSetup() {
 
 const makeStyles = (p: UiPalette) =>
   StyleSheet.create({
-    stack: { gap: 22 },
-    section: { gap: 12 },
-    confirmSection: { gap: 0 },
+    stack: { gap: 26 },
+    section: { gap: 4 },
     footerRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -379,70 +370,70 @@ const makeStyles = (p: UiPalette) =>
       width: "100%",
     },
 
-    bars: { flexDirection: "row", gap: 6 },
-    bar: { flex: 1, height: 5, borderRadius: 3 },
-
-    intro: {
+    stepRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
       paddingVertical: 14,
     },
-    introIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 13,
-      backgroundColor: alpha(p.primary, 0.14),
-      alignItems: "center",
-      justifyContent: "center",
+    stepRowDivider: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: p.line,
     },
-    introTitle: {
-      fontFamily: fonts.semiBold,
-      fontSize: 14,
-      lineHeight: 19,
-      color: p.text,
-      includeFontPadding: false,
-    },
-    introText: {
-      fontFamily: fonts.regular,
-      fontSize: 12,
-      lineHeight: 17,
-      color: p.muted,
-      marginTop: 2,
-      includeFontPadding: false,
-    },
-
-    steps: { paddingVertical: 14, gap: 14 },
-    stepRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     stepIcon: {
-      width: 32,
-      height: 32,
-      borderRadius: 10,
+      width: 38,
+      height: 38,
+      borderRadius: 12,
       backgroundColor: alpha(p.primary, 0.12),
       alignItems: "center",
       justifyContent: "center",
     },
-    stepText: {
-      flex: 1,
-      fontFamily: fonts.regular,
-      fontSize: 13,
+    stepTitle: {
+      fontFamily: fonts.semiBold,
+      fontSize: 13.5,
       lineHeight: 18,
       color: p.text,
       includeFontPadding: false,
     },
+    stepText: {
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 16,
+      color: p.muted,
+      includeFontPadding: false,
+    },
+    stepIndex: {
+      fontFamily: fonts.semiBold,
+      fontSize: 12,
+      color: p.muted,
+      includeFontPadding: false,
+    },
 
-    qrWrap: { alignItems: "center", gap: 12, paddingVertical: 18 },
-    qrBox: { padding: 12, backgroundColor: "#fff", borderRadius: 16 },
+    qrWrap: { alignItems: "center", gap: 12, paddingVertical: 20 },
+    qrBox: {
+      padding: 14,
+      backgroundColor: "#fff",
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: p.line,
+    },
     qrEmpty: {
       width: 176,
       height: 176,
       alignItems: "center",
       justifyContent: "center",
     },
+    qrCaption: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: p.text,
+      textAlign: "center",
+    },
     or: {
       fontFamily: fonts.regular,
       fontSize: 12,
       color: p.muted,
+      marginTop: 4,
     },
     secret: {
       fontFamily: fonts.semiBold,
@@ -454,23 +445,24 @@ const makeStyles = (p: UiPalette) =>
       paddingVertical: 10,
       borderRadius: 12,
       overflow: "hidden",
-    },
-    hint: {
-      fontFamily: fonts.regular,
-      fontSize: 11.5,
-      lineHeight: 16,
-      color: p.muted,
-      marginTop: -6,
-      marginLeft: 2,
+      textAlign: "center",
     },
 
-    grid: { flexDirection: "row", flexWrap: "wrap", paddingVertical: 10 },
+    grid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
+    codeChip: {
+      flexBasis: "48%",
+      flexGrow: 1,
+      paddingVertical: 13,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: p.line,
+      backgroundColor: p.card,
+      alignItems: "center",
+    },
     code: {
-      width: "50%",
-      paddingVertical: 9,
-      textAlign: "center",
-      fontFamily: fonts.medium,
+      fontFamily: fonts.semiBold,
       fontSize: 14,
+      letterSpacing: 1,
       color: p.text,
     },
   });

@@ -41,7 +41,7 @@ import {
 } from "../../components/motion";
 import { useTheme } from "../../theme/theme";
 import { useStyles } from "../../styles/login.styles";
-import { authApi } from "../../lib/api/auth.api";
+import { authApi, getChallengeToken } from "../../lib/api/auth.api";
 
 const LOGIN_BTN_WRAP = { marginTop: 6 } as const;
 
@@ -65,6 +65,8 @@ const getLoginErrorMessage = (error: any): string => {
   const serverMsg = error?.response?.data?.message;
 
   if (!error?.response) {
+    // not a network failure: e.g. "server did not send an access token"
+    if (error?.message && error?.code !== "ERR_NETWORK") return error.message;
     return "Network error. Please check your internet connection and try again.";
   }
   if (serverMsg && typeof serverMsg === "string") return serverMsg;
@@ -149,7 +151,7 @@ export default function Login() {
     Animated.sequence([step(-8), step(8), step(-6), step(6), step(0)]).start();
   }, [shake, reduce]);
 
-  // Form ko poori tarah reset karta hai (fields + validation errors).
+  // Fully resets the form (fields + validation errors).
   const clearForm = useCallback(() => {
     setEmail("");
     setPassword("");
@@ -174,10 +176,21 @@ export default function Login() {
 
     try {
       setLoading(true);
-      await authApi.login({
+      const res = await authApi.login({
         email: email.trim(),
         password,
       });
+
+      // Account has 2FA: no access token yet. Verify the code first.
+      const challengeToken = getChallengeToken(res);
+      if (challengeToken) {
+        clearForm();
+        router.push({
+          pathname: "/settings/two-factor-login",
+          params: { challengeToken },
+        } as never);
+        return;
+      }
 
       clearForm();
       router.replace("/chats" as any);
@@ -278,7 +291,7 @@ export default function Login() {
             >
               <View style={styles.grabber} />
 
-              {/* Inputs ke upar Reveal nahi: typing ke time flicker hota tha. */}
+              {/* No Reveal above the inputs: it caused flicker while typing. */}
               <Animated.View style={{ transform: [{ translateX: shake }] }}>
                 <AuthInput
                   label="Email or Username"

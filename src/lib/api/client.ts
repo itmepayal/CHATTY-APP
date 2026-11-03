@@ -22,6 +22,11 @@ api.interceptors.request.use(
     try {
       const token = await tokenStorage.get();
 
+      console.log(
+        `REQ ${config.method?.toUpperCase()} ${config.url} | token attached:`,
+        !!token,
+      );
+
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -44,18 +49,31 @@ export const setUnauthorizedHandler = (fn: () => void) => {
   onUnauthorized = fn;
 };
 
+const NO_LOGOUT_ON_401 = [
+  "/auth/login",
+  "/auth/logout",
+  "/auth/register",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+  "/auth/change-password",
+  "/auth/2fa/",
+];
+
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+  (response) => response,
   async (error: AxiosError<any>) => {
     if (error.response?.status === 401) {
-      try {
-        await tokenStorage.clear();
-        authState.set(false);
-        onUnauthorized?.();
-      } catch (storageError) {
-        console.error("Unauthorized handling error:", storageError);
+      const url = error.config?.url ?? "";
+      const skip = NO_LOGOUT_ON_401.some((p) => url.startsWith(p));
+
+      if (!skip) {
+        try {
+          await tokenStorage.clear();
+          authState.set(false);
+          onUnauthorized?.();
+        } catch (storageError) {
+          console.error("Unauthorized handling error:", storageError);
+        }
       }
     }
 

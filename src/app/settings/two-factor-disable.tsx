@@ -1,15 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { Keyboard, StyleSheet, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { alpha } from "../../theme/theme";
 import { Text, fonts, usePalette, UiPalette } from "../../components/ui";
-import AuthInput from "../../components/forms/AuthInput";
 import AppAlert from "../../components/common/AppAlert";
-import { ActionButton } from "../../components/settings/settings";
 import {
-  Card,
-  DANGER,
+  ActionButton,
+  Hero,
+  OtpInput,
   Page,
   SectionTitle,
 } from "../../components/settings/settings";
@@ -68,46 +65,33 @@ export default function TwoFactorDisable() {
             icon="shield-outline"
             flex={1.4}
             loading={loading}
-            disabled={!code}
+            disabled={code.length !== 6}
             onPress={submit}
           />
         </View>
       }
     >
       <View style={st.stack}>
-        <Card>
-          <View style={st.intro}>
-            <View style={st.introIcon}>
-              <Ionicons name="warning" size={20} color={DANGER} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={st.introTitle}>Are you sure?</Text>
-              <Text style={st.introText}>
-                Without two-factor, anyone who knows your password can sign in
-                to your account.
-              </Text>
-            </View>
-          </View>
-        </Card>
+        <Hero
+          icon="warning"
+          tone="danger"
+          title="Are you sure?"
+          text="Without two-factor, anyone who knows your password can sign in to your account."
+        />
 
         <View style={st.fieldSection}>
           <SectionTitle
             title="Verify it's you"
             icon="shield-checkmark-outline"
           />
-          <AuthInput
-            label="Authenticator code"
-            leftIcon="keypad-outline"
+          <OtpInput
             value={code}
-            onChangeText={(t: string) => {
+            onChange={(v) => {
               setApiErr(undefined);
-              setCode(t.replace(/\D/g, "").slice(0, 6));
+              setCode(v);
             }}
             error={errCode}
-            placeholder="123456"
-            keyboardType="number-pad"
-            autoCapitalize="none"
-            maxLength={6}
+            disabled={loading}
           />
           <Text style={st.hint}>
             Enter the current 6-digit code from your authenticator app. Recovery
@@ -141,49 +125,20 @@ export default function TwoFactorDisable() {
 
 const makeStyles = (p: UiPalette) =>
   StyleSheet.create({
-    stack: { gap: 22 },
-    fieldSection: { gap: 12 },
+    stack: { gap: 32 },
+    fieldSection: { gap: 4 },
     footerRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
       width: "100%",
     },
-    intro: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingVertical: 14,
-    },
-    introIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 13,
-      backgroundColor: alpha(DANGER, 0.14),
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    introTitle: {
-      fontFamily: fonts.semiBold,
-      fontSize: 14,
-      lineHeight: 19,
-      color: p.text,
-      includeFontPadding: false,
-    },
-    introText: {
-      fontFamily: fonts.regular,
-      fontSize: 12,
-      lineHeight: 17,
-      color: p.muted,
-      marginTop: 2,
-      includeFontPadding: false,
-    },
     hint: {
       fontFamily: fonts.regular,
       fontSize: 11.5,
       lineHeight: 16,
       color: p.muted,
-      marginTop: -6,
-      marginLeft: 2,
+      textAlign: "center",
+      marginTop: 4,
     },
   });

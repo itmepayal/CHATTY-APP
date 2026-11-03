@@ -1,19 +1,20 @@
 import React, { useMemo, useState } from "react";
 import { Keyboard, StyleSheet, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { alpha } from "../../theme/theme";
 import { Text, fonts, usePalette, UiPalette } from "../../components/ui";
 import AuthInput from "../../components/forms/AuthInput";
-import { ActionButton } from "../../components/settings/settings";
-import { Card, Page } from "../../components/settings/settings";
+import {
+  ActionButton,
+  Hero,
+  OtpInput,
+  Page,
+} from "../../components/settings/settings";
 import { authApi, apiErrorMessage } from "../../lib/api/auth.api";
 
 export default function TwoFactorLogin() {
   const p = usePalette();
   const router = useRouter();
   const st = useMemo(() => makeStyles(p), [p]);
-  // The login screen pushes here with: params: { challengeToken }
   const { challengeToken } = useLocalSearchParams<{
     challengeToken?: string;
   }>();
@@ -33,7 +34,6 @@ export default function TwoFactorLogin() {
         : "Enter the 6-digit code"
       : apiErr;
 
-  /* POST /auth/2fa/verify-login { challengeToken, code, useRecoveryCode } */
   const verify = async () => {
     if (loading) return;
     setTried(true);
@@ -53,7 +53,7 @@ export default function TwoFactorLogin() {
         useRecoveryCode: useRecovery,
       });
       Keyboard.dismiss();
-      router.replace("/" as never);
+      router.replace("/chats" as never);
     } catch (e: any) {
       setApiErr(apiErrorMessage(e, "Invalid code. Please try again."));
     } finally {
@@ -80,7 +80,7 @@ export default function TwoFactorLogin() {
             label={loading ? "Verifying..." : "Verify and sign in"}
             icon="shield-checkmark"
             loading={loading}
-            disabled={!code}
+            disabled={!valid}
             onPress={verify}
           />
           <ActionButton
@@ -97,48 +97,49 @@ export default function TwoFactorLogin() {
       }
     >
       <View style={st.stack}>
-        <Card>
-          <View style={st.intro}>
-            <View style={st.introIcon}>
-              <Ionicons
-                name={useRecovery ? "key" : "shield-checkmark"}
-                size={20}
-                color={p.primary}
-              />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={st.introTitle}>
-                {useRecovery
-                  ? "Enter a recovery code"
-                  : "Enter your 6-digit code"}
-              </Text>
-              <Text style={st.introText}>
-                {useRecovery
-                  ? "Enter one of the backup codes you saved when you set up two-factor. Each code works once."
-                  : "Open your authenticator app and enter the current code for Chatty."}
-              </Text>
-            </View>
-          </View>
-        </Card>
+        <Hero
+          icon={useRecovery ? "key" : "shield-checkmark"}
+          title={
+            useRecovery ? "Enter a recovery code" : "Enter your 6-digit code"
+          }
+          text={
+            useRecovery
+              ? "Enter one of the backup codes you saved when you set up two-factor. Each code works once."
+              : "Open your authenticator app and enter the current code for Chatty."
+          }
+        />
 
-        <View style={st.confirmSection}>
-          <AuthInput
-            key={`code-${formKey}`}
-            label={useRecovery ? "Recovery code" : "Authenticator code"}
-            leftIcon={useRecovery ? "key-outline" : "keypad-outline"}
-            value={code}
-            onChangeText={(t: string) => {
-              setApiErr(undefined);
-              setCode(useRecovery ? t : t.replace(/\D/g, "").slice(0, 6));
-            }}
-            error={err}
-            placeholder={useRecovery ? "xxxxx-xxxxx" : "123456"}
-            keyboardType={useRecovery ? "default" : "number-pad"}
-            autoCapitalize="none"
-            maxLength={useRecovery ? 11 : 6}
-          />
-          {!useRecovery && (
-            <Text style={st.hint}>The code refreshes every 30 seconds.</Text>
+        <View>
+          {useRecovery ? (
+            <AuthInput
+              key={`code-${formKey}`}
+              label="Recovery code"
+              leftIcon="key-outline"
+              value={code}
+              onChangeText={(t: string) => {
+                setApiErr(undefined);
+                setCode(t);
+              }}
+              error={err}
+              placeholder="xxxxx-xxxxx"
+              autoCapitalize="none"
+              maxLength={11}
+            />
+          ) : (
+            <>
+              <OtpInput
+                key={`otp-${formKey}`}
+                value={code}
+                onChange={(v) => {
+                  setApiErr(undefined);
+                  setCode(v);
+                }}
+                error={err}
+                disabled={loading}
+                autoFocus
+              />
+              <Text style={st.hint}>The code refreshes every 30 seconds.</Text>
+            </>
           )}
         </View>
       </View>
@@ -148,44 +149,14 @@ export default function TwoFactorLogin() {
 
 const makeStyles = (p: UiPalette) =>
   StyleSheet.create({
-    stack: { gap: 22 },
-    confirmSection: { gap: 0 },
+    stack: { gap: 32 },
     footerCol: { gap: 10, width: "100%" },
-    intro: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingVertical: 14,
-    },
-    introIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 13,
-      backgroundColor: alpha(p.primary, 0.14),
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    introTitle: {
-      fontFamily: fonts.semiBold,
-      fontSize: 14,
-      lineHeight: 19,
-      color: p.text,
-      includeFontPadding: false,
-    },
-    introText: {
-      fontFamily: fonts.regular,
-      fontSize: 12,
-      lineHeight: 17,
-      color: p.muted,
-      marginTop: 2,
-      includeFontPadding: false,
-    },
     hint: {
       fontFamily: fonts.regular,
       fontSize: 11.5,
       lineHeight: 16,
       color: p.muted,
-      marginTop: -6,
-      marginLeft: 2,
+      textAlign: "center",
+      marginTop: 10,
     },
   });

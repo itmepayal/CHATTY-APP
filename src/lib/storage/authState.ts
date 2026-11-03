@@ -1,14 +1,17 @@
-let cache: { value: boolean; at: number } | null = null;
+type Listener = (v: boolean | null) => void;
+let value: boolean | null = null;
+const listeners = new Set<Listener>();
 
 export const authState = {
-  get(maxAgeMs = 60_000): boolean | null {
-    if (!cache) return null;
-    return Date.now() - cache.at < maxAgeMs ? cache.value : null;
+  get: () => value,
+  set: (v: boolean | null) => {
+    value = v;
+    listeners.forEach((l) => l(v));
   },
-  set(value: boolean) {
-    cache = { value, at: Date.now() };
-  },
-  reset() {
-    cache = null;
+  subscribe: (l: Listener) => {
+    listeners.add(l);
+    return () => {
+      listeners.delete(l);
+    };
   },
 };
